@@ -352,15 +352,28 @@
           useManualOverride: false,
           manualProbateAssets: 38500,
           manualTestamentarySubstitutes: 950000,
-          estimatedExpenses: 18500
+          estimatedExpenses: 18500,
+          amountPassingToSpouse: 0
+        },
+        profile: {
+          dob: '1964-04-15',
+          streetAddress: '412 Maplewood Drive',
+          city: 'White Plains',
+          state: 'NY',
+          zip: '10605',
+          phone: '(914) 555-0110',
+          email: 'robert.vance@example.com',
+          spouseDob: '1966-09-22',
+          marriageDate: '2018-06-14'
         },
         will: {
           testatorName: 'Robert J. Vance',
           county: 'Westchester',
           spouseName: 'Evelyn M. Vance',
+          waiverAlreadyExecuted: false,
           children: [
-            { id: 'child-1', fullName: 'Claire Elizabeth Vance' },
-            { id: 'child-2', fullName: 'Daniel Robert Vance' }
+            { id: 'child-1', fullName: 'Claire Elizabeth Vance', dob: '1991-03-12', contact: '(914) 555-0148' },
+            { id: 'child-2', fullName: 'Daniel Robert Vance', dob: '1994-11-04', contact: '(914) 555-0192' }
           ],
           perStirpes: true,
           primaryExecutor: 'Claire Elizabeth Vance',
@@ -430,12 +443,25 @@
           useManualOverride: false,
           manualProbateAssets: 0,
           manualTestamentarySubstitutes: 0,
-          estimatedExpenses: 0
+          estimatedExpenses: 0,
+          amountPassingToSpouse: 0
+        },
+        profile: {
+          dob: '',
+          streetAddress: '',
+          city: '',
+          state: 'NY',
+          zip: '',
+          phone: '',
+          email: '',
+          spouseDob: '',
+          marriageDate: ''
         },
         will: {
           testatorName: '',
           county: 'New York (Manhattan)',
           spouseName: '',
+          waiverAlreadyExecuted: false,
           children: [],
           perStirpes: true,
           primaryExecutor: '',
@@ -584,11 +610,12 @@
     let isSaveAsModalOpen = false;
     let saveAsFileNameInput = '';
 
-    let activeTab = 'assets';
+    let activeTab = 'profile';
     let editingAccountId = null;
     let showPerStirpesInfo = false;
     let toastMessage = null;
     let sectionGuideExpanded = {
+      'profile': true,
       'assets': true,
       'elective-share': true,
       'will-generator': true,
@@ -596,6 +623,75 @@
     };
     let glossarySearch = '';
     let glossaryCategory = 'All';
+
+    function ensureProfile() {
+      if (!state.profile) {
+        state.profile = {
+          dob: '',
+          streetAddress: '',
+          city: '',
+          state: 'NY',
+          zip: '',
+          phone: '',
+          email: '',
+          spouseDob: '',
+          marriageDate: ''
+        };
+      }
+      return state.profile;
+    }
+
+    function calculateAgeFromDob(dobStr) {
+      if (!dobStr) return null;
+      const d = new Date(dobStr + 'T00:00:00');
+      if (isNaN(d.getTime())) return null;
+      const today = new Date();
+      let age = today.getFullYear() - d.getFullYear();
+      const m = today.getMonth() - d.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--;
+      return age >= 0 && age <= 120 ? age : null;
+    }
+
+    window.updateProfileField = function(field, val) {
+      const p = ensureProfile();
+      p[field] = val;
+      saveState();
+      render();
+    };
+
+    window.updateChildField = function(idx, field, val) {
+      if (!state.will.children[idx]) return;
+      state.will.children[idx][field] = val;
+      saveState();
+      render();
+    };
+
+    window.syncFamilyToEstateRoles = function() {
+      const validKids = state.will.children.filter(c => c && c.fullName && c.fullName.trim());
+      if (validKids.length === 0) {
+        showToast('Add at least one child name first to sync roles.');
+        return;
+      }
+      const c1 = validKids[0];
+      const c2 = validKids[1] || validKids[0];
+      state.will.primaryExecutor = c1.fullName.trim();
+      if (validKids.length > 1) state.will.successorExecutor = c2.fullName.trim();
+      state.attorneyPrep.poaPrimaryAgent = c1.fullName.trim();
+      if (validKids.length > 1) state.attorneyPrep.poaSuccessorAgent = c2.fullName.trim();
+      state.attorneyPrep.hcpPrimaryAgent = c1.fullName.trim();
+      if (c1.contact) state.attorneyPrep.hcpPrimaryPhone = c1.contact.trim();
+      if (validKids.length > 1) {
+        state.attorneyPrep.hcpBackupAgent = c2.fullName.trim();
+        if (c2.contact) state.attorneyPrep.hcpBackupPhone = c2.contact.trim();
+      }
+      state.attorneyPrep.dispositionPrimaryAgent = c1.fullName.trim();
+      if (validKids.length > 1) state.attorneyPrep.dispositionSuccessorAgent = c2.fullName.trim();
+      state.attorneyPrep.hipaaAuthorizedPersons = validKids.map(k => k.fullName.trim()).join(', ');
+      draftForm = getFreshDraftForm();
+      saveState();
+      render();
+      showToast('Synced your children into Beneficiaries, Executors, POA, Health Care Proxy, HIPAA & Disposition Agents!');
+    };
 
     // Draft form state for Tab 1 Add/Edit Account
     let draftForm = getFreshDraftForm();
@@ -767,7 +863,7 @@
       activePlanName = name;
       editingAccountId = null;
       draftForm = getFreshDraftForm();
-      activeTab = 'assets';
+      activeTab = 'profile';
       isNewPlanModalOpen = false;
 
       // Add to saved plans catalog so it can be re-opened anytime
@@ -1254,11 +1350,12 @@
     function renderHeader(unprotectedCount, probateExceedsLimit) {
       const badgeCount = unprotectedCount + (probateExceedsLimit ? 1 : 0);
       const tabs = [
-        { id: 'assets', title: '1. Asset & Probate-Bypass Tracker', sub: 'SCPA § 1301 Small Estate & TOD/POD', badge: badgeCount },
-        { id: 'elective-share', title: '2. Spousal Right of Election Simulator', sub: 'EPTL § 5-1.1-A Net Estate Clawback' },
-        { id: 'will-generator', title: '3. DIY NY Backup Will Generator', sub: 'EPTL § 3-2.1 & SCPA § 1406 Affidavit' },
-        { id: 'attorney-prep', title: '4. NY Attorney Visit Prep Packet', sub: 'DRL § 236(B)(3) Waiver, POA & Proxy' },
-        { id: 'help-guide', title: '5. Help, Glossary & Steps Guide', sub: 'Plain-English Definitions & Checklist' }
+        { id: 'profile', title: '1. Personal & Family Profile', sub: 'Start Here: Name, DOB, Address & Kids' },
+        { id: 'assets', title: '2. Assets & Probate-Bypass', sub: 'SCPA § 1301 Small Estate & TOD/POD', badge: badgeCount },
+        { id: 'elective-share', title: '3. Spousal Right of Election', sub: 'EPTL § 5-1.1-A Net Estate Clawback' },
+        { id: 'will-generator', title: '4. NY Backup Will Generator', sub: 'EPTL § 3-2.1 & SCPA § 1406 Affidavit' },
+        { id: 'attorney-prep', title: '5. NY Attorney Prep Packet', sub: 'Waiver, POA, Proxy, Living Will & More' },
+        { id: 'help-guide', title: '6. Help & NY Legal Glossary', sub: 'Plain-English Definitions & Roadmap' }
       ];
 
       return `
@@ -1361,7 +1458,7 @@
               </div>
             </div>
 
-            <nav class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 py-2.5" aria-label="Main Navigation">
+            <nav class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 py-2.5" aria-label="Main Navigation">
               ${tabs.map(t => {
                 const active = activeTab === t.id;
                 return `
@@ -1764,6 +1861,350 @@
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // --- Tab 1: Personal & Family Profile (Start Here) ---
+    function renderProfileTab() {
+      const p = ensureProfile();
+      const myAge = calculateAgeFromDob(p.dob);
+      const spouseAge = calculateAgeFromDob(p.spouseDob);
+
+      const helpBanner = renderSectionHelpBanner(
+        'profile',
+        'Step 1 Guide: Start With Your Personal & Family Profile',
+        "Every great estate plan starts with the people you are protecting. Enter your legal name, date of birth, New York home address, spouse's details, and your children from your prior relationship here ONCE—and the app automatically populates your Backup Will, Attorney Prep Packet, Beneficiaries, and Agent roles across all tabs.",
+        [
+          { title: 'Enter Your Full Legal Name, DOB & NY Residential Address', detail: 'Use your full legal name as it appears on your financial accounts and NY driver’s license, and select your NY County (determines which Surrogate’s Court has jurisdiction).' },
+          { title: 'Enter Your Spouse & Marriage Information', detail: 'Even when keeping 100% separate estates, NY law requires identifying your spouse by full legal name in your Will and Mutual Waiver.' },
+          { title: 'List All Children from Your Prior Relationship', detail: 'Add each child’s full legal name, DOB, and phone number. Then click "Auto-Fill Children into Roles" to pre-populate your Executors, Power of Attorney, Health Care Proxy, HIPAA, and Disposition Agents.' },
+          { title: 'Click "Continue to Step 2: Add Your Accounts"', detail: 'Move smoothly to Tab 2 to enter your IRAs, brokerage accounts, bank accounts, and real estate.' }
+        ],
+        [
+          { term: 'Domicile (NY County)', definition: 'Your permanent primary residence in New York State. Determines which County Surrogate’s Court handles your estate.' },
+          { term: 'Blended Family', definition: 'A marriage where one or both spouses have children from a prior relationship—making explicit NY statutory waivers critical.' },
+          { term: '100% Private Local Storage', definition: 'Your personal details stay strictly in your browser on your computer and are never transmitted to any server.' }
+        ]
+      );
+
+      return `
+        <div class="space-y-6">
+          ${helpBanner}
+
+          <!-- Top Progress Banner -->
+          <div class="bg-[#0F172A] text-white rounded-xl border border-slate-800 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <span class="inline-block px-2.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-mono font-semibold">
+                STEP 1 OF 5 • CLIENT &amp; FAMILY INTAKE
+              </span>
+              <h2 class="text-lg sm:text-xl font-bold mt-1.5">Personal &amp; Family Profile</h2>
+              <p class="text-xs sm:text-sm text-slate-300 mt-0.5">
+                Fill this in once — your name, address, spouse, and children automatically flow into every legal document and tracker in this app.
+              </p>
+            </div>
+            <button
+              type="button"
+              onclick="switchTab('assets')"
+              class="shrink-0 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold shadow-sm cursor-pointer transition-colors"
+            >
+              Next: Step 2 (Accounts) →
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <!-- Left: Your Personal Information -->
+            <div class="lg:col-span-6 bg-white rounded-xl border border-slate-200 shadow-xs p-5 space-y-4">
+              <div class="border-b border-slate-200 pb-3 flex items-center justify-between">
+                <div>
+                  <h3 class="text-base font-bold text-slate-900">1. Your Personal Information (Testator / Client)</h3>
+                  <p class="text-xs text-slate-500">Used on your Backup Will, Power of Attorney, Proxy &amp; Attorney Intake Sheet</p>
+                </div>
+                ${myAge !== null ? `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-sky-50 text-sky-800 border border-sky-200">Age ${myAge}</span>` : ''}
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="sm:col-span-2">
+                  <label for="profile-testator-name" class="block text-xs font-semibold text-slate-700 mb-1">Full Legal Name <span class="text-rose-500">*</span></label>
+                  <input
+                    id="profile-testator-name"
+                    type="text"
+                    value="${escapeHtml(state.will.testatorName || '')}"
+                    oninput="updateWillField('testatorName', this.value)"
+                    placeholder="e.g., John Michael Smith"
+                    class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label for="profile-dob" class="block text-xs font-semibold text-slate-700 mb-1">Date of Birth</label>
+                  <input
+                    id="profile-dob"
+                    type="date"
+                    value="${escapeHtml(p.dob || '')}"
+                    onchange="updateProfileField('dob', this.value)"
+                    class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label for="profile-county" class="block text-xs font-semibold text-slate-700 mb-1">NY County of Residence</label>
+                  <select
+                    id="profile-county"
+                    onchange="updateWillField('county', this.value)"
+                    class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-900 bg-white"
+                  >
+                    ${NY_COUNTIES.map(c => `<option value="${c}" ${state.will.county === c ? 'selected' : ''}>${c} County</option>`).join('')}
+                  </select>
+                </div>
+
+                <div class="sm:col-span-2">
+                  <label for="profile-street" class="block text-xs font-semibold text-slate-700 mb-1">Street Address</label>
+                  <input
+                    id="profile-street"
+                    type="text"
+                    value="${escapeHtml(p.streetAddress || '')}"
+                    oninput="updateProfileField('streetAddress', this.value)"
+                    placeholder="e.g., 123 Main Street, Apt 4B"
+                    class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label for="profile-city" class="block text-xs font-semibold text-slate-700 mb-1">City / Town</label>
+                  <input
+                    id="profile-city"
+                    type="text"
+                    value="${escapeHtml(p.city || '')}"
+                    oninput="updateProfileField('city', this.value)"
+                    placeholder="e.g., White Plains"
+                    class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-900"
+                  />
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label for="profile-state" class="block text-xs font-semibold text-slate-700 mb-1">State</label>
+                    <input
+                      id="profile-state"
+                      type="text"
+                      value="${escapeHtml(p.state || 'NY')}"
+                      oninput="updateProfileField('state', this.value)"
+                      class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-900 bg-slate-50"
+                    />
+                  </div>
+                  <div>
+                    <label for="profile-zip" class="block text-xs font-semibold text-slate-700 mb-1">ZIP Code</label>
+                    <input
+                      id="profile-zip"
+                      type="text"
+                      value="${escapeHtml(p.zip || '')}"
+                      oninput="updateProfileField('zip', this.value)"
+                      placeholder="10605"
+                      class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-900"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label for="profile-phone" class="block text-xs font-semibold text-slate-700 mb-1">Phone Number</label>
+                  <input
+                    id="profile-phone"
+                    type="text"
+                    value="${escapeHtml(p.phone || '')}"
+                    oninput="updateProfileField('phone', this.value)"
+                    placeholder="(555) 555-0100"
+                    class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label for="profile-email" class="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
+                  <input
+                    id="profile-email"
+                    type="email"
+                    value="${escapeHtml(p.email || '')}"
+                    oninput="updateProfileField('email', this.value)"
+                    placeholder="you@example.com"
+                    class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-900"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Spouse & Marriage Information -->
+            <div class="lg:col-span-6 bg-white rounded-xl border border-slate-200 shadow-xs p-5 space-y-4">
+              <div class="border-b border-slate-200 pb-3 flex items-center justify-between">
+                <div>
+                  <h3 class="text-base font-bold text-slate-900">2. Spouse &amp; Marriage Information</h3>
+                  <p class="text-xs text-slate-500">Required for intentional-omission wording in your Will &amp; Mutual Waiver</p>
+                </div>
+                ${spouseAge !== null ? `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">Spouse Age ${spouseAge}</span>` : ''}
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="sm:col-span-2">
+                  <label for="profile-spouse-name" class="block text-xs font-semibold text-slate-700 mb-1">Spouse's Full Legal Name <span class="text-rose-500">*</span></label>
+                  <input
+                    id="profile-spouse-name"
+                    type="text"
+                    value="${escapeHtml(state.will.spouseName || '')}"
+                    oninput="updateWillField('spouseName', this.value)"
+                    placeholder="e.g., Jane Marie Smith"
+                    class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label for="profile-spouse-dob" class="block text-xs font-semibold text-slate-700 mb-1">Spouse's Date of Birth</label>
+                  <input
+                    id="profile-spouse-dob"
+                    type="date"
+                    value="${escapeHtml(p.spouseDob || '')}"
+                    onchange="updateProfileField('spouseDob', this.value)"
+                    class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label for="profile-marriage-date" class="block text-xs font-semibold text-slate-700 mb-1">Date of Marriage</label>
+                  <input
+                    id="profile-marriage-date"
+                    type="date"
+                    value="${escapeHtml(p.marriageDate || '')}"
+                    onchange="updateProfileField('marriageDate', this.value)"
+                    class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-200 space-y-2">
+                <label class="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    id="profile-waiver-executed"
+                    type="checkbox"
+                    ${state.will.waiverAlreadyExecuted ? 'checked' : ''}
+                    onchange="updateWillField('waiverAlreadyExecuted', this.checked)"
+                    class="w-4 h-4 mt-0.5 accent-amber-700 cursor-pointer"
+                  />
+                  <div>
+                    <div class="text-xs font-bold text-amber-950">Have You Already Signed a Prenuptial / Mutual Spousal Waiver?</div>
+                    <p class="text-[11px] text-amber-900 mt-0.5 leading-relaxed">
+                      Check this box only if you and your spouse have already signed a formally acknowledged NY waiver of <code class="font-mono">EPTL § 5-1.1-A</code> &amp; <code class="font-mono">§ 5-3.1</code>. Leave unchecked if you plan to execute it with your NY attorney.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              <div class="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950">
+                <strong>Privacy Reminder:</strong> Everything entered here is saved 100% locally in your Chrome browser. Use <strong>"📁 Save As..."</strong> in the top bar anytime to save a backup copy to your computer's hard drive.
+              </div>
+            </div>
+          </div>
+
+          <!-- Full Width: Your Children from Prior Relationship -->
+          <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-5 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+              <div>
+                <h3 class="text-base font-bold text-slate-900">3. Your Children from Prior Relationship (Intended 100% Beneficiaries)</h3>
+                <p class="text-xs text-slate-500">Add each child below, then click "Auto-Fill Children into Roles" to populate your Beneficiaries, Executors, POA &amp; Medical Agents.</p>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onclick="addChildRow()"
+                  class="px-3.5 py-2 rounded-lg bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
+                >
+                  + Add Child
+                </button>
+                <button
+                  type="button"
+                  onclick="syncFamilyToEstateRoles()"
+                  class="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer"
+                  title="Copies your children's names & phone numbers into Beneficiaries, Executors, POA, Health Care Proxy, HIPAA, and Disposition Agents"
+                >
+                  ✨ Auto-Fill Children into All Roles
+                </button>
+              </div>
+            </div>
+
+            ${state.will.children.length === 0 ? `
+              <div class="p-8 rounded-xl bg-slate-50 border border-dashed border-slate-300 text-center">
+                <p class="text-sm font-semibold text-slate-700">No children added yet</p>
+                <p class="text-xs text-slate-500 mt-1 mb-3">Click "+ Add Child" to enter your children's full legal names, dates of birth, and phone numbers.</p>
+                <button
+                  type="button"
+                  onclick="addChildRow()"
+                  class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer"
+                >
+                  + Add Your First Child
+                </button>
+              </div>
+            ` : `
+              <div class="space-y-3">
+                ${state.will.children.map((ch, idx) => `
+                  <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                    <div class="md:col-span-5">
+                      <label class="block text-[11px] font-semibold text-slate-700 mb-1">Child ${idx + 1} — Full Legal Name</label>
+                      <input
+                        id="profile-child-name-${idx}"
+                        type="text"
+                        value="${escapeHtml(ch.fullName || '')}"
+                        oninput="updateChildField(${idx}, 'fullName', this.value)"
+                        placeholder="Child's Full Legal Name"
+                        class="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm text-slate-900 bg-white"
+                      />
+                    </div>
+                    <div class="md:col-span-3">
+                      <label class="block text-[11px] font-semibold text-slate-700 mb-1">Date of Birth (Optional)</label>
+                      <input
+                        id="profile-child-dob-${idx}"
+                        type="date"
+                        value="${escapeHtml(ch.dob || '')}"
+                        onchange="updateChildField(${idx}, 'dob', this.value)"
+                        class="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm text-slate-900 bg-white"
+                      />
+                    </div>
+                    <div class="md:col-span-3">
+                      <label class="block text-[11px] font-semibold text-slate-700 mb-1">Phone / Contact (Optional)</label>
+                      <input
+                        id="profile-child-contact-${idx}"
+                        type="text"
+                        value="${escapeHtml(ch.contact || '')}"
+                        oninput="updateChildField(${idx}, 'contact', this.value)"
+                        placeholder="(555) 555-0199"
+                        class="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-sm text-slate-900 bg-white"
+                      />
+                    </div>
+                    <div class="md:col-span-1 flex justify-end">
+                      <button
+                        type="button"
+                        onclick="removeChildRow(${idx})"
+                        class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-red-50 hover:bg-red-100 text-red-700 cursor-pointer"
+                        title="Remove child"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            `}
+          </div>
+
+          <!-- Bottom Guided Next Step Bar -->
+          <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
+            <span class="text-xs text-slate-500">
+              All changes save automatically in your browser.
+            </span>
+            <button
+              type="button"
+              onclick="syncFamilyToEstateRoles(); switchTab('assets');"
+              class="px-6 py-3 rounded-xl bg-[#0F172A] hover:bg-slate-800 text-white text-sm font-bold shadow-sm cursor-pointer transition-colors"
+            >
+              Save Profile &amp; Continue to Step 2: Add Your Accounts →
+            </button>
           </div>
         </div>
       `;
@@ -3163,10 +3604,21 @@
                 <h2 class="text-lg sm:text-xl font-bold text-slate-950">Client Intake &amp; Statutory Instrument Briefing Packet</h2>
               </div>
               <div class="text-xs text-slate-700 sm:text-right">
-                <div><strong>Client:</strong> ${escapeHtml(state.will.testatorName || '[Client Name]')} (${escapeHtml(state.will.county)} County, NY)</div>
-                <div><strong>Spouse:</strong> ${escapeHtml(state.will.spouseName || '[Spouse Name]')}</div>
+                <div><strong>Client:</strong> ${escapeHtml(state.will.testatorName || '[Client Name]')} ${ensureProfile().dob ? '(DOB: ' + escapeHtml(ensureProfile().dob) + ')' : ''}</div>
+                <div>${escapeHtml([ensureProfile().streetAddress, ensureProfile().city, ensureProfile().state || 'NY', ensureProfile().zip].filter(Boolean).join(', ') || (state.will.county + ' County, NY'))} (${escapeHtml(state.will.county)} County)</div>
+                ${(ensureProfile().phone || ensureProfile().email) ? `<div>${escapeHtml([ensureProfile().phone, ensureProfile().email].filter(Boolean).join(' • '))}</div>` : ''}
+                <div><strong>Spouse:</strong> ${escapeHtml(state.will.spouseName || '[Spouse Name]')} ${ensureProfile().spouseDob ? '(DOB: ' + escapeHtml(ensureProfile().spouseDob) + ')' : ''} ${ensureProfile().marriageDate ? '• Married: ' + escapeHtml(ensureProfile().marriageDate) : ''}</div>
               </div>
             </div>
+
+            ${state.will.children.length > 0 ? `
+              <div class="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs print-avoid-break">
+                <span class="font-bold text-slate-900">Children from Prior Relationship (Intended 100% Beneficiaries): </span>
+                <span class="text-slate-700">
+                  ${state.will.children.map(c => escapeHtml(c.fullName || '[Unnamed]') + (c.dob ? ' (DOB: ' + escapeHtml(c.dob) + ')' : '') + (c.contact ? ' [' + escapeHtml(c.contact) + ']' : '')).join(' • ')}
+                </span>
+              </div>
+            ` : ''}
 
             <div class="space-y-2.5 print-avoid-break">
               <h3 class="text-sm font-bold uppercase tracking-wide text-slate-900">
@@ -3548,7 +4000,8 @@
       const probateExceedsLimit = totalSoleProbate > 50000 || hasProbateRealEstate;
 
       let tabContent = '';
-      if (activeTab === 'assets') tabContent = renderAssetTrackerTab();
+      if (activeTab === 'profile') tabContent = renderProfileTab();
+      else if (activeTab === 'assets') tabContent = renderAssetTrackerTab();
       else if (activeTab === 'elective-share') tabContent = renderElectiveShareTab();
       else if (activeTab === 'will-generator') tabContent = renderBackupWillTab();
       else if (activeTab === 'attorney-prep') tabContent = renderAttorneyPrepTab();
