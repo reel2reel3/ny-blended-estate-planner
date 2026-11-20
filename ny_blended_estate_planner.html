@@ -83,6 +83,7 @@
       'Checking Account',
       'Savings / CD',
       'Workplace 401(k)/Pension',
+      'Real Property (NY Home/Condo/Co-op)',
       'Personal Property'
     ];
 
@@ -90,6 +91,8 @@
       'Named IRA/Plan Beneficiary',
       'TOD (Transfer on Death)',
       'POD (Payable on Death / Totten Trust)',
+      'NY Transfer on Death Deed (RPL § 424)',
+      'Revocable Living Trust',
       'None (Probate Asset)'
     ];
 
@@ -244,6 +247,20 @@
         category: 'Will & Signing',
         plainMeaning: 'Explicit legal permission in your Will and POA allowing your Executor or Agent to access online banking, email, cloud photos, and digital accounts.',
         whyItMatters: 'Tech companies like Apple and Google lock accounts upon death unless you grant RUFADAA authority and set up Apple Legacy Contact / Google Inactive Account Manager.'
+      },
+      {
+        term: 'Family Exempt Property (Off-the-Top Spousal Set-Aside)',
+        statute: 'NY EPTL § 5-3.1',
+        category: 'Spousal Rights',
+        plainMeaning: 'Completely independent of the 1/3 Right of Election, NY law automatically awards a surviving spouse up to $25,000 in cash/equivalents, 1 motor vehicle up to $25,000, and $20,000 in household furniture/appliances.',
+        whyItMatters: 'General waiver language often fails in Surrogate’s Court—your Mutual Waiver must explicitly waive “Exempt Property under EPTL § 5-3.1” or your spouse can claim these items even if disinherited.'
+      },
+      {
+        term: 'Probate Citation & SCPA § 1404 Witness Examination',
+        statute: 'NY SCPA § 1403 & § 1404',
+        category: 'Will & Signing',
+        plainMeaning: 'When a Will is filed for probate, your surviving spouse must be officially notified (cited) even if disinherited, and may demand formal questioning of the Will’s witnesses under SCPA § 1404.',
+        whyItMatters: 'A DIY Will lacks an attorney’s “presumption of regularity.” Using a fully funded Revocable Living Trust (or attorney-supervised Will signing) avoids or minimizes these delays.'
       }
     ];
 
@@ -1742,13 +1759,21 @@
 
     function renderAssetTrackerTab() {
       const totalEstate = state.accounts.reduce((s, a) => s + a.balance, 0);
+      const unprotectedRealEstate = state.accounts.filter(
+        a =>
+          a.accountType === 'Real Property (NY Home/Condo/Co-op)' &&
+          a.ownershipTitle === 'Sole Name' &&
+          a.transferMechanism !== 'NY Transfer on Death Deed (RPL § 424)' &&
+          a.transferMechanism !== 'Revocable Living Trust'
+      );
+      const hasProbateRealEstate = unprotectedRealEstate.length > 0;
       const soleProbateAccounts = state.accounts.filter(
         a => a.ownershipTitle === 'Sole Name' && a.transferMechanism === 'None (Probate Asset)'
       );
       const totalSoleProbate = soleProbateAccounts.reduce((s, a) => s + a.balance, 0);
       const SMALL_ESTATE_LIMIT = 50000;
-      const qualifiesSmallEstate = totalSoleProbate <= SMALL_ESTATE_LIMIT;
-      const gaugePct = Math.min(100, Math.round((totalSoleProbate / SMALL_ESTATE_LIMIT) * 100));
+      const qualifiesSmallEstate = totalSoleProbate <= SMALL_ESTATE_LIMIT && !hasProbateRealEstate;
+      const gaugePct = hasProbateRealEstate ? 100 : Math.min(100, Math.round((totalSoleProbate / SMALL_ESTATE_LIMIT) * 100));
 
       const unprotectedAccounts = state.accounts.filter(
         a =>
@@ -1777,18 +1802,18 @@
       const helpBanner = renderSectionHelpBanner(
         'assets',
         'Section 1 Guide: Organizing Your Accounts to Bypass NY Probate Court',
-        "Any account in your sole name that has a named beneficiary (like an IRA, a TOD brokerage account, or a POD bank account) transfers directly to your children within days of death—completely bypassing New York Surrogate's Court probate. Your goal here is to make sure your major accounts have TOD/POD beneficiaries while keeping your 'None (Probate Asset)' accounts at or below $50,000 so your children can use New York's $1 Small Estate Affidavit.",
+        "Any account in your sole name that has a named beneficiary (like an IRA, a TOD brokerage account, or a POD bank account) transfers directly to your children within days of death—completely bypassing New York Surrogate's Court probate. Your goal here is to make sure your major accounts have TOD/POD beneficiaries while keeping your 'None (Probate Asset)' personal property at or below $50,000 (and any NY real estate covered by an RPL § 424 TOD Deed or Trust) so your children can avoid formal probate.",
         [
-          { title: 'Enter Each of Your Sole-Name Accounts', detail: 'Use the form on the left to list all of your IRAs, 401(k)s, taxable brokerage accounts, bank checking/savings accounts, and personal property.' },
-          { title: 'Set Direct Beneficiary Mechanisms (IRA, TOD, POD)', detail: 'Make sure every Taxable Brokerage account is set to "TOD (Transfer on Death)" and every main Savings/CD account is set to "POD (Payable on Death / Totten Trust)". Contact your bank/brokerage to file these free forms.' },
+          { title: 'Enter Each of Your Sole-Name Accounts', detail: 'Use the form on the left to list all of your IRAs, 401(k)s, taxable brokerage accounts, bank checking/savings accounts, NY real estate, and personal property.' },
+          { title: 'Set Direct Beneficiary Mechanisms (IRA, TOD, POD, or RPL § 424 TOD Deed)', detail: 'Make sure every Taxable Brokerage account is set to "TOD (Transfer on Death)", every main Savings/CD account is set to "POD (Payable on Death / Totten Trust)", and any NY real estate has a recorded RPL § 424 TOD Deed or Revocable Trust.' },
           { title: 'Turn On "Per Stirpes" & Split 100% Among Your Children', detail: 'Select "Yes" for Per Stirpes and verify your children’s percentages total 100%.' },
-          { title: 'Keep One Small Checking Buffer (<$50,000 Total Probate Assets)', detail: 'Leave one small checking account ($15k–$35k) as "None (Probate Asset)" to pay funeral and final tax bills, while keeping the NY $50,000 Small Estate Gauge in the green.' }
+          { title: 'Keep One Small Checking Buffer (<$50,000 Total Probate Personal Property)', detail: 'Leave one small checking account ($15k–$35k) as "None (Probate Asset)" to pay funeral and final tax bills, while keeping the NY $50,000 Small Estate Gauge in the green.' }
         ],
         [
           { term: 'TOD (Transfer on Death)', definition: 'A free beneficiary registration for taxable stock/brokerage accounts. Passes the account directly to your children outside of probate.' },
           { term: 'POD (Payable on Death / Totten Trust)', definition: 'A free bank beneficiary designation ("In Trust For") on checking, savings, and CD accounts.' },
           { term: 'Per Stirpes (EPTL § 1-2.14)', definition: 'If a child predeceases you, their share goes to their own children (your grandchildren) instead of shifting 100% to a surviving sibling.' },
-          { term: 'SCPA § 1301 ($50,000 Small Estate Limit)', definition: 'If sole-name accounts without beneficiaries total $50,000 or less, your Executor can use a $1 Small Estate Affidavit instead of formal Surrogate’s Court probate.' }
+          { term: 'SCPA § 1301 ($50,000 Small Estate Limit — Personal Property Only)', definition: 'Applies strictly to personal property <= $50,000. Owning sole-name NY real estate without a recorded RPL § 424 TOD Deed or Trust automatically disqualifies Voluntary Administration.' }
         ]
       );
 
@@ -1800,7 +1825,7 @@
               <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <div class="flex items-center gap-2">
                   <span class="px-2.5 py-0.5 rounded text-xs font-mono font-semibold bg-[#0F172A] text-white">SCPA § 1301</span>
-                  <h2 class="text-base font-bold text-slate-900">NY $50,000 Small Estate Threshold Gauge</h2>
+                  <h2 class="text-base font-bold text-slate-900">NY $50,000 Small Estate Threshold Gauge (Personal Property)</h2>
                 </div>
                 <span class="text-sm font-mono font-bold text-slate-900">
                   ${formatCurrency(totalSoleProbate)} / ${formatCurrency(SMALL_ESTATE_LIMIT)}
@@ -1820,16 +1845,20 @@
                     ✓ Qualifies for NY Voluntary Administration — $1 Small Estate Affidavit, avoids formal probate
                   </div>
                   <p class="text-xs text-emerald-800 mt-0.5">
-                    Sole-name probate assets (${formatCurrency(totalSoleProbate)}) are at or below the $50,000 statutory threshold under New York SCPA Article 13.
+                    Sole-name probate personal property (${formatCurrency(totalSoleProbate)}) is at or below the $50,000 statutory threshold under <code class="font-mono">SCPA § 1301</code> (strictly personal property; no unprotected sole-name NY real estate).
                   </p>
                 </div>
               ` : `
                 <div class="p-3 rounded-lg bg-red-50 border border-red-200 text-red-950 text-xs sm:text-sm">
                   <div class="font-bold text-red-900">
-                    ⚠ Exceeds NY $50,000 Small Estate Limit — Triggers formal Surrogate's Court probate and mandatory court citation notices to surviving spouse
+                    ${hasProbateRealEstate
+                      ? '⚠ Disqualified from NY Small Estate (SCPA § 1301) — Unprotected Sole-Name NY Real Estate Triggers Formal Probate'
+                      : '⚠ Exceeds NY $50,000 Small Estate Limit — Triggers formal Surrogate’s Court probate and mandatory court citation notices to surviving spouse'}
                   </div>
                   <p class="text-xs text-red-800 mt-0.5">
-                    Under SCPA § 1403(1)(a), formal probate requires serving a court citation on your surviving spouse. Add TOD/POD beneficiary designations to bring sole-name probate assets under $50,000.
+                    ${hasProbateRealEstate
+                      ? 'Under <code class="font-mono">SCPA § 1301</code>, the $50,000 Small Estate limit applies <strong>strictly to personal property</strong>. Owning NY real estate in your sole name without a recorded <code class="font-mono">RPL § 424</code> TOD Deed or Revocable Living Trust automatically bars Voluntary Administration—even if your bank accounts are under $50,000!'
+                      : 'Under SCPA § 1403(1)(a), formal probate requires serving a court citation on your surviving spouse. Add TOD/POD beneficiary designations to bring sole-name probate personal property under $50,000.'}
                   </p>
                 </div>
               `}
@@ -2383,6 +2412,10 @@
                     </tbody>
                   </table>
                 </div>
+
+                <div class="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-950">
+                  <strong>Separate Trap — Family Exempt Property (<code class="font-mono">EPTL § 5-3.1</code>):</strong> Completely <em>independent</em> of the 1/3 Right of Election, NY law awards a surviving spouse up to <strong>$25,000 in cash/equivalents</strong>, <strong>1 motor vehicle up to $25,000</strong>, and <strong>$20,000 in household furniture/appliances</strong> off the top of your estate—unless <strong>explicitly waived</strong> by statute in your Mutual Waiver.
+                </div>
               </div>
             </div>
 
@@ -2391,10 +2424,10 @@
                 <div class="bg-emerald-50 border-b border-emerald-200 px-5 py-4">
                   <span class="px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-emerald-700 text-white">Scenario B</span>
                   <h3 class="text-base sm:text-lg font-bold text-emerald-950 mt-1">
-                    With Deed-Acknowledged Mutual Waiver (<code class="font-mono text-sm">EPTL § 5-1.1-A(e)</code>)
+                    With Deed-Acknowledged Mutual Waiver (<code class="font-mono text-sm">EPTL § 5-1.1-A(e)</code> &amp; <code class="font-mono text-sm">§ 5-3.1</code>)
                   </h3>
                   <p class="text-xs text-emerald-800 mt-0.5">
-                    Executed with New York real-estate deed acknowledgment language (<code class="font-mono">DRL § 236(B)(3)</code> / <code class="font-mono">RPL § 309-a</code>).
+                    Explicitly waives BOTH the Right of Election AND Family Exempt Property (<code class="font-mono">EPTL § 5-3.1</code>) in NY deed acknowledgment form (<code class="font-mono">DRL § 236(B)(3)</code> / <code class="font-mono">RPL § 309-a</code>).
                   </p>
                 </div>
                 <div class="p-5 space-y-4">
@@ -2589,7 +2622,7 @@
                 <div class="space-y-2 print-avoid-break">
                   <h3 class="text-sm font-bold uppercase underline">Article I — Family &amp; Intentional Omission</h3>
                   <p class="text-sm text-justify">
-                    I am married to <strong>${escapeHtml(state.will.spouseName || '[SPOUSE NAME]')}</strong>. I have ${state.will.children.length} children from a prior relationship, namely: <strong>${escapeHtml(childrenNames)}</strong>. I have intentionally—and not out of oversight or mistake—made no financial provision in this Will for my spouse, <strong>${escapeHtml(state.will.spouseName || '[SPOUSE NAME]')}</strong>, in accordance with our mutual agreement to keep separate estates for our respective children and our mutual waivers of the spousal right of election under <code class="font-mono text-xs">EPTL § 5-1.1-A(e)</code>.
+                    I am married to <strong>${escapeHtml(state.will.spouseName || '[SPOUSE NAME]')}</strong>. I have ${state.will.children.length > 0 ? state.will.children.length : '[NUMBER]'} ${state.will.children.length === 1 ? 'child' : 'children'} from a prior relationship, namely: <strong>${escapeHtml(childrenNames)}</strong>. I have intentionally—and not out of oversight or mistake—made no financial provision in this Will for my spouse, <strong>${escapeHtml(state.will.spouseName || '[SPOUSE NAME]')}</strong>, in accordance with our mutual agreement to keep separate estates for our respective children and our mutual written waivers of both the spousal right of election (<code class="font-mono text-xs">EPTL § 5-1.1-A(e)</code>) and family exempt property rights (<code class="font-mono text-xs">EPTL § 5-3.1</code>).
                   </p>
                 </div>
 
@@ -2603,7 +2636,7 @@
                 <div class="space-y-2 print-avoid-break">
                   <h3 class="text-sm font-bold uppercase underline">Article III — Personal Property &amp; Residuary Estate</h3>
                   <p class="text-sm text-justify">
-                    I give, devise, and bequeath all of my tangible personal property and all the rest, residue, and remainder of my probate estate, of whatsoever kind and wheresoever situated, in equal shares to my named children, <strong>${escapeHtml(childrenNames)}</strong>, <strong>${state.will.perStirpes ? 'per stirpes (EPTL § 1-2.14)' : 'or to the survivor(s) of them'}</strong>.
+                    Subject to our executed mutual waiver of family exempt property under New York <code class="font-mono text-xs">EPTL § 5-3.1</code> (including cash/equivalents, motor vehicles, and household effects), I give, devise, and bequeath all of my tangible personal property and all the rest, residue, and remainder of my probate estate, of whatsoever kind and wheresoever situated, in equal shares to my named children, <strong>${escapeHtml(childrenNames)}</strong>, <strong>${state.will.perStirpes ? 'per stirpes (EPTL § 1-2.14)' : 'or to the survivor(s) of them'}</strong>.
                   </p>
                 </div>
 
@@ -2688,9 +2721,9 @@
 
             <div class="grid grid-cols-1 md:grid-cols-5 gap-3 mt-4">
               ${[
-                { k: 'printedCleanly', title: '1. Printed Cleanly on Paper', d: 'No handwritten edits or cross-outs.' },
+                { k: 'printedCleanly', title: '1. Printed Cleanly on Paper', d: 'No handwritten edits, cross-outs, or removed staples.' },
                 { k: 'signedAtEnd', title: '2. Signed at Physical End', d: 'Signed at the physical end of the Will (EPTL § 3-2.1).' },
-                { k: 'twoDisinterestedWitnesses', title: '3. Two Disinterested Witnesses', d: 'Neither spouse nor any child/beneficiary (avoids voiding gifts under EPTL § 3-3.2).' },
+                { k: 'twoDisinterestedWitnesses', title: '3. Two Disinterested Witnesses', d: 'Neither spouse, any child/beneficiary (voids gift under EPTL § 3-3.2), nor your named Executor (complicates appointment).' },
                 { k: 'witnessesAddresses30Days', title: '4. Signed + Residential Addresses', d: 'Both witnesses sign and write residential addresses within 30 days.' },
                 { k: 'selfProvingNotarized', title: '5. Self-Proving Affidavit Notarized', d: 'SCPA § 1406 witness affidavit sworn before a NY Notary Public.' }
               ].map(item => {
@@ -2709,6 +2742,15 @@
                   </button>
                 `;
               }).join('')}
+            </div>
+
+            <div class="mt-3 p-3.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-950 space-y-1">
+              <div class="font-bold">
+                ⚠ NY Surrogate's Court Reality (<code class="font-mono">SCPA § 1403</code> &amp; <code class="font-mono">§ 1404</code>): DIY Will vs. Revocable Living Trust
+              </div>
+              <p class="leading-relaxed text-red-900">
+                When any Will is offered for probate in New York, your surviving spouse <strong>must be formally cited (notified) under <code class="font-mono">SCPA § 1403</code></strong>—even if disinherited and even with a signed waiver. Unlike an attorney-supervised Will, a DIY Will carries <strong>no &ldquo;presumption of regularity&rdquo;</strong> and can be delayed for months by an <code class="font-mono">SCPA § 1404</code> witness examination. Discuss a <strong>fully funded Revocable Living Trust</strong> (Tab 4) to bypass Surrogate's Court entirely, or have your NY attorney supervise signing this Will during your waiver visit.
+              </p>
             </div>
           </div>
         </div>
@@ -3100,16 +3142,16 @@
                 Section B: Requested Legal Instruments Checklist
               </h3>
 
-              <div class="p-3.5 rounded-lg border border-slate-300 bg-slate-50 text-xs space-y-1">
+              <div class="p-3.5 rounded-lg border border-slate-300 bg-slate-50 text-xs space-y-1 print-avoid-break">
                 <div class="font-bold text-slate-950">
-                  1. Mutual Waivers of Right of Election (<code class="font-mono">EPTL § 5-1.1-A(e)</code>)
+                  1. Mutual Waivers of Right of Election (<code class="font-mono">EPTL § 5-1.1-A(e)</code>) &amp; Family Exempt Property (<code class="font-mono">EPTL § 5-3.1</code>)
                 </div>
                 <p class="text-slate-700">
-                  Executed with New York real-estate deed acknowledgment language (<code class="font-mono">DRL § 236(B)(3)</code> / <code class="font-mono">RPL § 309-a</code>) and independent-counsel waiver acknowledgment, waiving all claims against probate assets and testamentary substitutes (IRAs, TOD, POD).
+                  Executed with New York real-estate deed acknowledgment language (<code class="font-mono">DRL § 236(B)(3)</code> / <code class="font-mono">RPL § 309-a</code>) and independent-counsel waiver acknowledgment, irrevocably waiving: (1) all rights against probate assets and testamentary substitutes (IRAs, TOD, POD) under <code class="font-mono">EPTL § 5-1.1-A</code>, <strong>AND (2) explicitly waiving &ldquo;Exempt Property under EPTL § 5-3.1&rdquo;</strong> (up to $25k cash/equivalents, $25k vehicle, and $20k household goods — general waiver language is often insufficient in Surrogate&apos;s Court).
                 </p>
               </div>
 
-              <div class="p-3.5 rounded-lg border border-slate-300 bg-slate-50 text-xs space-y-1">
+              <div class="p-3.5 rounded-lg border border-slate-300 bg-slate-50 text-xs space-y-1 print-avoid-break">
                 <div class="font-bold text-slate-950">
                   2. NY Statutory Short Form Power of Attorney (<code class="font-mono">GOL § 5-1513</code>)
                 </div>
@@ -3119,12 +3161,12 @@
                   <div><strong>Co-Agent Rule:</strong> ${escapeHtml(prep.poaCoAgentRule)}</div>
                 </div>
                 <p class="text-slate-700">
-                  <strong>Gifting Modifications:</strong> ${prep.poaGiftingModifications ? escapeHtml(prep.poaGiftingNotes || 'Enabled — protect beneficiary designations') : 'Standard Statutory Cap ($5,000/yr); no authority to change beneficiary designations.'}
-                  <br /><em>Execution Note:</em> Requires <strong>two disinterested witnesses plus Notary Public</strong> under NY GOL § 5-1501B.
+                  <strong>Gifting Modifications (Post-2021 Overhaul — SGR Abolished):</strong> ${prep.poaGiftingModifications ? escapeHtml(prep.poaGiftingNotes || 'Enabled — protect beneficiary designations') : 'Standard Statutory Cap ($5,000/yr); no authority to change beneficiary designations.'}
+                  <br /><em>Execution &amp; Formatting Note:</em> Requires <strong>two disinterested witnesses plus Notary Public</strong> (<code class="font-mono">GOL § 5-1501B</code>), and exact statutory wording &amp; 12-point font in the &ldquo;Caution to the Principal&rdquo; section or banks will reject it.
                 </p>
               </div>
 
-              <div class="p-3.5 rounded-lg border border-slate-300 bg-slate-50 text-xs space-y-1">
+              <div class="p-3.5 rounded-lg border border-slate-300 bg-slate-50 text-xs space-y-1 print-avoid-break">
                 <div class="font-bold text-slate-950">
                   3. NY Health Care Proxy (<code class="font-mono">PHL Article 29-C</code>)
                 </div>
@@ -3168,17 +3210,17 @@
               ` : ''}
             </div>
 
-            <!-- Section C: Age 62+ Long-Term Care, Medicaid & Real Estate -->
+            <!-- Section C: Age 62+ Long-Term Care, Medicaid, Real Estate & Revocable Trust -->
             <div class="space-y-2.5 pt-3 border-t border-slate-300 print-avoid-break">
               <h3 class="text-sm font-bold uppercase tracking-wide text-slate-900">
-                Section C: Age 62+ Long-Term Care, Medicaid &amp; Real Estate Discussion Agenda
+                Section C: Age 62+ Long-Term Care, Medicaid, Real Estate &amp; Trust Agenda
               </h3>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div class="p-3 rounded-lg border border-slate-300 bg-slate-50 space-y-1">
-                  <div class="font-bold text-slate-900">Long-Term Care &amp; NY Medicaid Spousal Refusal</div>
+                  <div class="font-bold text-slate-900">Long-Term Care &amp; NY Medicaid Spousal Rules</div>
                   <p class="text-slate-700">
                     ${(prep.discussMedicaidSpousalRefusal ?? true)
-                      ? 'Requested: Review NY 5-year nursing home lookback, Medicaid Asset Protection Trust (MAPT), Long-Term Care Insurance, and NY Spousal Refusal rules to protect each spouse’s separate estate.'
+                      ? 'Requested: NY counts BOTH spouses’ assets regardless of “sole name” titling. Discuss 5-year lookback MAPT, Long-Term Care Insurance, and NY Spousal Refusal (warning: counties retain the statutory right to sue a refusing spouse for reimbursement).'
                       : 'Not requested for this consultation.'}
                   </p>
                 </div>
@@ -3186,10 +3228,13 @@
                   <div class="font-bold text-slate-900">NY Real Estate Transfer Plan (<code class="font-mono">RPL § 424</code> / Trust)</div>
                   <p class="text-slate-700">
                     ${prep.ownsNyRealEstate
-                      ? '<strong>Strategy:</strong> ' + escapeHtml(prep.realEstatePlanOption || 'NY Transfer on Death Deed (RPL § 424)') + (prep.realEstateNotes ? ' — ' + escapeHtml(prep.realEstateNotes) : '')
-                      : 'No sole-name NY real estate reported at this time.'}
+                      ? '<strong>Strategy:</strong> ' + escapeHtml(prep.realEstatePlanOption || 'NY Transfer on Death Deed (RPL § 424)') + (prep.realEstateNotes ? ' — ' + escapeHtml(prep.realEstateNotes) : '') + '. <em>(Note: An RPL § 424 TOD Deed requires 2 witnesses + notary AND is completely void if not recorded with the county clerk prior to death.)</em>'
+                      : 'No sole-name NY real estate reported at this time. (Note: SCPA § 1301 Small Estate limit excludes real property.)'}
                   </p>
                 </div>
+              </div>
+              <div class="p-3 rounded-lg border border-amber-300 bg-amber-50/50 text-xs text-amber-950">
+                <strong>Revocable Living Trust vs. DIY Backup Will (<code class="font-mono">SCPA § 1403</code> / <code class="font-mono">§ 1404</code>):</strong> Evaluate establishing a <strong>fully funded Revocable Living Trust</strong> (or attorney-supervised Will execution) so children avoid formal Surrogate&apos;s Court probate, mandatory spousal citation (<code class="font-mono">SCPA § 1403</code>), and potential <code class="font-mono">SCPA § 1404</code> witness examinations.
               </div>
             </div>
 

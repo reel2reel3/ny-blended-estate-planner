@@ -412,8 +412,7 @@ export const BackupWillTab: React.FC<BackupWillTabProps> = ({
               </p>
               <p className="text-sm text-justify">
                 <strong>Section 1.02. Intentional Omission of Spouse.</strong> I have intentionally, and not as a result of mistake, accident, or oversight, made no financial provision in this Will for my spouse,{' '}
-                <strong>{will.spouseName || '[SPOUSE FULL LEGAL NAME]'}</strong>, in accordance with our mutual understanding and agreement to maintain separate estates for the benefit of our respective children, and in contemplation of our mutual waivers of the spousal right of election executed pursuant to New York{' '}
-                <code className="font-mono text-xs">EPTL § 5-1.1-A(e)</code>.
+                <strong>{will.spouseName || '[SPOUSE FULL LEGAL NAME]'}</strong>, in accordance with our mutual understanding and agreement to maintain separate estates for the benefit of our respective children, and in contemplation of our mutual written waivers of both the spousal right of election (<code className="font-mono text-xs">EPTL § 5-1.1-A(e)</code>) and family exempt property rights (<code className="font-mono text-xs">EPTL § 5-3.1</code>).
               </p>
             </div>
 
@@ -433,7 +432,7 @@ export const BackupWillTab: React.FC<BackupWillTabProps> = ({
                 Article III — Tangible Personal Property &amp; Residuary Estate
               </h3>
               <p className="text-sm text-justify">
-                I give, devise, and bequeath all of my tangible personal property (including any motor vehicles, household effects, jewelry, and personal effects) and all the rest, residue, and remainder of my property and estate, both real and personal, of whatsoever kind and wheresoever situated, which I may own or to which I may be entitled at the time of my death (my &ldquo;Residuary Estate&rdquo;), in equal shares to my children,{' '}
+                Subject to our executed mutual waiver of family exempt property under New York <code className="font-mono text-xs">EPTL § 5-3.1</code> (including cash/equivalents, motor vehicles, and household effects), I give, devise, and bequeath all of my tangible personal property (including any motor vehicles, household effects, jewelry, and personal effects) and all the rest, residue, and remainder of my property and estate, both real and personal, of whatsoever kind and wheresoever situated, which I may own or to which I may be entitled at the time of my death (my &ldquo;Residuary Estate&rdquo;), in equal shares to my children,{' '}
                 <strong>{formattedChildrenNames}</strong>,{' '}
                 <strong>
                   {will.perStirpes
@@ -640,7 +639,7 @@ export const BackupWillTab: React.FC<BackupWillTabProps> = ({
               key: 'twoDisinterestedWitnesses' as const,
               step: 'Step 3',
               title: 'Two Disinterested Witnesses',
-              desc: 'Neither your spouse nor any child/beneficiary may witness—otherwise their gift is voided under EPTL § 3-3.2.',
+              desc: 'Neither your spouse, any child/beneficiary (voids gift under EPTL § 3-3.2), nor your named Executor (complicates appointment) may serve as a witness.',
             },
             {
               key: 'witnessesAddresses30Days' as const,
@@ -692,6 +691,18 @@ export const BackupWillTab: React.FC<BackupWillTabProps> = ({
           <span>
             <strong>Surrogate&apos;s Court Staple Rule:</strong> Once the Will and <code className="font-mono">SCPA § 1406</code> Self-Proving Affidavit are stapled and executed, <strong>never remove the staples</strong> to photocopy or scan. Staple holes create a presumption of page substitution in NY Surrogate&apos;s Court requiring a formal Staple Affidavit.
           </span>
+        </div>
+
+        <div className="mt-3 p-3.5 rounded-lg bg-red-50 border border-red-200 flex items-start gap-2.5 text-xs text-red-950">
+          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <div className="font-bold">
+              NY Surrogate&apos;s Court Reality (<code className="font-mono">SCPA § 1403</code> &amp; <code className="font-mono">§ 1404</code>): DIY Will vs. Revocable Living Trust
+            </div>
+            <p className="leading-relaxed text-red-900">
+              When any Will is offered for probate in New York, your surviving spouse <strong>must be formally cited (notified) under <code className="font-mono">SCPA § 1403</code></strong>—even if disinherited and even with a signed waiver. Unlike an attorney-supervised Will, a DIY Will carries <strong>no &ldquo;presumption of regularity&rdquo;</strong> and can be delayed for months by an <code className="font-mono">SCPA § 1404</code> witness examination. For maximum litigation protection, discuss using a <strong>fully funded Revocable Living Trust</strong> (Tab 4) to bypass Surrogate&apos;s Court citation entirely, or have your NY attorney supervise the signing of this Will during your flat-fee waiver visit.
+            </p>
+          </div>
         </div>
       </div>
     </div>

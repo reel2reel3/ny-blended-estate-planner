@@ -448,11 +448,18 @@ export const ElectiveShareTab: React.FC<ElectiveShareTabProps> = ({
                   <strong>Medicaid Nursing Home Trap:</strong> In New York, if {spouseName || 'your surviving spouse'} later requires Medicaid long-term care, the local Department of Social Services (DSS) treats failure to exercise the 1/3 Right of Election as an uncompensated asset transfer—forcing a claim against your children&apos;s inherited IRAs and TOD/POD accounts.
                 </span>
               </div>
+
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-950 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-red-700 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Separate Trap — Family Exempt Property (<code className="font-mono">EPTL § 5-3.1</code>):</strong> Completely <em>independent</em> of the 1/3 Right of Election, NY law awards a surviving spouse up to <strong>$25,000 in cash/equivalents</strong>, <strong>1 motor vehicle up to $25,000</strong>, and <strong>$20,000 in household furniture/appliances</strong> off the top of your estate—unless <strong>explicitly waived</strong> by statute in your Mutual Waiver.
+                </span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Scenario B: With Deed-Acknowledged Mutual Waiver (EPTL § 5-1.1-A(e)) */}
+        {/* Scenario B: With Deed-Acknowledged Mutual Waiver (EPTL § 5-1.1-A(e) & EPTL § 5-3.1) */}
         <div
           id="card-scenario-b"
           className="bg-white rounded-xl border-2 border-emerald-500 shadow-sm overflow-hidden flex flex-col justify-between"
@@ -464,10 +471,10 @@ export const ElectiveShareTab: React.FC<ElectiveShareTabProps> = ({
                   Scenario B • Gold-Standard Protection
                 </span>
                 <h3 className="text-base sm:text-lg font-bold text-emerald-950 mt-1.5">
-                  With Deed-Acknowledged Mutual Waiver (<code className="font-mono text-sm">EPTL § 5-1.1-A(e)</code>)
+                  With Deed-Acknowledged Mutual Waiver (<code className="font-mono text-sm">EPTL § 5-1.1-A(e)</code> &amp; <code className="font-mono text-sm">§ 5-3.1</code>)
                 </h3>
                 <p className="text-xs text-emerald-800 mt-0.5">
-                  Both spouses sign a mutual written waiver acknowledged before a Notary Public in the form required for recording a New York real estate deed.
+                  Both spouses explicitly waive BOTH the Right of Election AND Family Exempt Property (<code className="font-mono">EPTL § 5-3.1</code>) in a deed-acknowledged agreement.
                 </p>
               </div>
               <ShieldCheck className="w-7 h-7 text-emerald-600 shrink-0" />

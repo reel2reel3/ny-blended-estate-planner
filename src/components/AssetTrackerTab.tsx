@@ -39,6 +39,7 @@ const ACCOUNT_TYPES: AccountType[] = [
   'Checking Account',
   'Savings / CD',
   'Workplace 401(k)/Pension',
+  'Real Property (NY Home/Condo/Co-op)',
   'Personal Property',
 ];
 
@@ -46,6 +47,8 @@ const TRANSFER_MECHANISMS: TransferMechanism[] = [
   'Named IRA/Plan Beneficiary',
   'TOD (Transfer on Death)',
   'POD (Payable on Death / Totten Trust)',
+  'NY Transfer on Death Deed (RPL § 424)',
+  'Revocable Living Trust',
   'None (Probate Asset)',
 ];
 
@@ -233,14 +236,25 @@ export const AssetTrackerTab: React.FC<AssetTrackerTabProps> = ({
   );
   const allUnprotectedAccounts = [...unprotectedBrokerageAccounts, ...unprotectedBankAccounts];
 
-  // 2. NY $50,000 Small Estate Threshold Gauge (SCPA § 1301): Sum all Sole Name assets that have None (Probate Asset)
+  // 2. NY $50,000 Small Estate Threshold Gauge (SCPA § 1301): Strictly PERSONAL property only!
+  // Any sole-name NY Real Property without a recorded RPL § 424 TOD Deed or Revocable Living Trust automatically disqualifies Voluntary Administration.
+  const unprotectedRealEstateAccounts = accounts.filter(
+    (a) =>
+      a.accountType === 'Real Property (NY Home/Condo/Co-op)' &&
+      a.ownershipTitle === 'Sole Name' &&
+      a.transferMechanism !== 'NY Transfer on Death Deed (RPL § 424)' &&
+      a.transferMechanism !== 'Revocable Living Trust'
+  );
+  const hasProbateRealEstate = unprotectedRealEstateAccounts.length > 0;
   const soleNameProbateAccounts = accounts.filter(
     (a) => a.ownershipTitle === 'Sole Name' && a.transferMechanism === 'None (Probate Asset)'
   );
   const totalSoleProbateAssets = soleNameProbateAccounts.reduce((sum, a) => sum + a.balance, 0);
   const SMALL_ESTATE_LIMIT = 50000;
-  const qualifiesSmallEstate = totalSoleProbateAssets <= SMALL_ESTATE_LIMIT;
-  const gaugePercentage = Math.min(100, Math.round((totalSoleProbateAssets / SMALL_ESTATE_LIMIT) * 100));
+  const qualifiesSmallEstate = totalSoleProbateAssets <= SMALL_ESTATE_LIMIT && !hasProbateRealEstate;
+  const gaugePercentage = hasProbateRealEstate
+    ? 100
+    : Math.min(100, Math.round((totalSoleProbateAssets / SMALL_ESTATE_LIMIT) * 100));
 
   // 3. Final Expense Liquidity Alert: Check if total None (Probate Asset) cash is $0
   const probateCashAccounts = accounts.filter(
@@ -351,7 +365,7 @@ export const AssetTrackerTab: React.FC<AssetTrackerTabProps> = ({
                     Qualifies for NY Voluntary Administration — $1 Small Estate Affidavit, avoids formal probate
                   </span>
                   <p className="text-emerald-800 mt-0.5 text-xs">
-                    Sole-name probate assets ({formatCurrency(totalSoleProbateAssets)}) are within the $50,000 statutory cap under New York SCPA Article 13.
+                    Sole-name probate personal property ({formatCurrency(totalSoleProbateAssets)}) is within the $50,000 statutory cap under <code className="font-mono">SCPA § 1301</code> (strictly personal property; no unprotected sole-name NY real estate).
                   </p>
                 </div>
               </div>
@@ -363,10 +377,20 @@ export const AssetTrackerTab: React.FC<AssetTrackerTabProps> = ({
                 <ShieldAlert className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
                 <div className="text-xs sm:text-sm">
                   <span className="font-bold">
-                    Exceeds NY $50,000 Small Estate Limit — Triggers formal Surrogate&apos;s Court probate and mandatory court citation notices to surviving spouse
+                    {hasProbateRealEstate
+                      ? 'Disqualified from NY Small Estate (SCPA § 1301) — Unprotected Sole-Name NY Real Estate Triggers Formal Probate'
+                      : 'Exceeds NY $50,000 Small Estate Limit — Triggers formal Surrogate’s Court probate and mandatory court citation notices to surviving spouse'}
                   </span>
                   <p className="text-red-800 mt-0.5 text-xs">
-                    Under <code className="font-mono">SCPA § 1403(1)(a)</code>, formal probate requires serving a formal court citation on your surviving spouse, giving them an immediate forum to contest the Will or file a Right of Election. Add TOD/POD designations to reduce probate assets below $50,000.
+                    {hasProbateRealEstate ? (
+                      <>
+                        Under <code className="font-mono">SCPA § 1301</code>, the $50,000 Small Estate threshold applies <strong>strictly to personal property</strong>. Owning NY real estate in your sole name without a recorded <code className="font-mono">RPL § 424</code> TOD Deed or Revocable Living Trust automatically bars Voluntary Administration—even if your bank accounts are under $50,000!
+                      </>
+                    ) : (
+                      <>
+                        Under <code className="font-mono">SCPA § 1403(1)(a)</code>, formal probate requires serving a formal court citation on your surviving spouse, giving them an immediate forum to contest the Will or file a Right of Election. Add TOD/POD designations to reduce probate personal property below $50,000.
+                      </>
+                    )}
                   </p>
                 </div>
               </div>

@@ -897,28 +897,28 @@ export const AttorneyPrepTab: React.FC<AttorneyPrepTabProps> = ({
 
           <div className="grid grid-cols-1 gap-3.5">
             {/* Instrument 1: Mutual Waivers of Right of Election */}
-            <div className="p-4 rounded-lg border border-slate-300 bg-slate-50/50">
+            <div className="p-4 rounded-lg border border-slate-300 bg-slate-50/50 print-avoid-break">
               <div className="flex items-start gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
                 <div className="flex-1 text-xs space-y-1">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-bold text-sm text-slate-950">
-                      1. Mutual Waivers of Right of Election (<code className="font-mono">EPTL § 5-1.1-A(e)</code>)
+                      1. Mutual Waivers of Right of Election (<code className="font-mono">EPTL § 5-1.1-A(e)</code>) &amp; Family Exempt Property (<code className="font-mono">EPTL § 5-3.1</code>)
                     </span>
                     <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-200 text-slate-800">
                       DRL § 236(B)(3) &amp; RPL § 309-a Deed Form
                     </span>
                   </div>
                   <p className="text-slate-700 leading-relaxed">
-                    Draft a stand-alone Mutual Waiver of Right of Election whereby{' '}
-                    <strong>{will.testatorName}</strong> and <strong>{will.spouseName}</strong> each irrevocably waive all rights to elect against the other&apos;s Will or Testamentary Substitutes (including IRAs, TOD brokerage accounts, and POD Totten Trusts) under <code className="font-mono">EPTL § 5-1.1-A</code>, as well as exempt family property rights under <code className="font-mono">EPTL § 5-3.1</code>. Must include: (a) full New York uniform real-estate deed acknowledgment certificates (<code className="font-mono">RPL § 309-a</code>), (b) attached Schedules A &amp; B financial disclosures, and (c) independent legal counsel representation or explicit informed waiver-of-counsel acknowledgment.
+                    Draft a stand-alone Mutual Waiver whereby{' '}
+                    <strong>{will.testatorName || '[Client Name]'}</strong> and <strong>{will.spouseName || '[Spouse Name]'}</strong> each irrevocably waive: (1) all rights to elect against the other&apos;s Will or Testamentary Substitutes (IRAs, TOD, POD) under <code className="font-mono">EPTL § 5-1.1-A</code>, <strong>AND (2) explicitly waive &ldquo;Exempt Property under EPTL § 5-3.1&rdquo;</strong> (up to $25,000 cash/equivalents, $25,000 motor vehicle, and $20,000 household furniture/appliances — general waiver language is often insufficient in Surrogate&apos;s Court). Must include: (a) NY uniform real-estate deed acknowledgment certificates (<code className="font-mono">RPL § 309-a</code>), (b) attached Schedules A &amp; B financial disclosures, and (c) independent counsel or explicit informed waiver-of-counsel acknowledgment.
                   </p>
                 </div>
               </div>
             </div>
 
             {/* Instrument 2: NY Statutory Short Form Power of Attorney */}
-            <div className="p-4 rounded-lg border border-slate-300 bg-slate-50/50">
+            <div className="p-4 rounded-lg border border-slate-300 bg-slate-50/50 print-avoid-break">
               <div className="flex items-start gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
                 <div className="flex-1 text-xs space-y-1.5">
@@ -942,10 +942,10 @@ export const AttorneyPrepTab: React.FC<AttorneyPrepTabProps> = ({
                     </div>
                   </div>
                   <p className="text-slate-700 leading-relaxed pt-1">
-                    <strong>Section (g) Gifting Modifications:</strong>{' '}
+                    <strong>Section (g) Gifting Modifications (Post-2021 Overhaul — SGR Abolished):</strong>{' '}
                     {prep.poaGiftingModifications ? (
                       <span>
-                        <strong>Enabled</strong> — {prep.poaGiftingNotes}
+                        <strong>Enabled</strong> — {prep.poaGiftingNotes || 'Authorize gifting only to Testator’s children; prohibit beneficiary changes.'}
                       </span>
                     ) : (
                       <span>
@@ -954,7 +954,7 @@ export const AttorneyPrepTab: React.FC<AttorneyPrepTabProps> = ({
                     )}
                   </p>
                   <p className="text-[11px] text-slate-600 italic">
-                    Statutory Execution Note: Under NY General Obligations Law § 5-1501B(1)(b), the principal&apos;s signature must be both notarized AND witnessed by two disinterested persons (none of whom are named as agents or permissible gift recipients).
+                    Statutory Execution &amp; Formatting Note: Under NY <code className="font-mono">GOL § 5-1501B</code> &amp; <code className="font-mono">§ 5-1513</code>, the principal&apos;s signature must be both notarized AND witnessed by two disinterested persons (not agents or gift recipients), and the &ldquo;Caution to the Principal&rdquo; must strictly conform to statutory wording and 12-point font size or financial institutions will reject it.
                   </p>
                 </div>
               </div>
@@ -1053,19 +1053,19 @@ export const AttorneyPrepTab: React.FC<AttorneyPrepTabProps> = ({
             )}
           </div>
 
-          {/* Section C: Age 62+ Long-Term Care, Medicaid & Real Estate Review */}
+          {/* Section C: Age 62+ Long-Term Care, Medicaid, Real Estate & Revocable Trust Review */}
           <div className="space-y-3 pt-4 border-t border-slate-300 print-avoid-break">
             <h3 className="text-sm font-bold uppercase tracking-wide text-slate-900">
-              Section C: Age 62+ Long-Term Care, Medicaid &amp; Real Estate Discussion Agenda
+              Section C: Age 62+ Long-Term Care, Medicaid, Real Estate &amp; Trust Agenda
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="p-3.5 rounded-lg border border-slate-300 bg-slate-50/50 space-y-1">
                 <div className="font-bold text-slate-900">
-                  Long-Term Care &amp; NY Medicaid Spousal Refusal
+                  Long-Term Care &amp; NY Medicaid Spousal Rules
                 </div>
                 <p className="text-slate-700 leading-relaxed">
                   {prep.discussMedicaidSpousalRefusal ?? true
-                    ? 'Requested: Review NY 5-year nursing home lookback, Medicaid Asset Protection Trust (MAPT), Long-Term Care Insurance, and NY Spousal Refusal rules to protect each spouse’s separate estate.'
+                    ? 'Requested: NY counts BOTH spouses’ assets regardless of “sole name” titling. Discuss 5-year lookback MAPT, Long-Term Care Insurance, and NY Spousal Refusal (noting that counties retain the statutory right to sue a refusing spouse for reimbursement).'
                     : 'Not requested for this consultation.'}
                 </p>
               </div>
@@ -1077,13 +1077,20 @@ export const AttorneyPrepTab: React.FC<AttorneyPrepTabProps> = ({
                   {prep.ownsNyRealEstate ? (
                     <>
                       <strong>Selected Strategy:</strong> {prep.realEstatePlanOption || 'NY Transfer on Death Deed (RPL § 424)'}
-                      {prep.realEstateNotes ? ` — ${prep.realEstateNotes}` : ''}
+                      {prep.realEstateNotes ? ` — ${prep.realEstateNotes}` : ''}.{' '}
+                      <span className="italic text-slate-600">
+                        (Note: An RPL § 424 TOD Deed requires 2 witnesses + notary AND is completely void if not recorded with the county clerk prior to death.)
+                      </span>
                     </>
                   ) : (
-                    'No sole-name NY real estate reported at this time.'
+                    'No sole-name NY real estate reported at this time. (If acquired later, note SCPA § 1301 excludes real property.)'
                   )}
                 </p>
               </div>
+            </div>
+            <div className="p-3.5 rounded-lg border border-amber-300 bg-amber-50/50 text-xs text-amber-950">
+              <strong>Revocable Living Trust vs. DIY Backup Will (<code className="font-mono">SCPA § 1403</code> / <code className="font-mono">§ 1404</code>):</strong>{' '}
+              Evaluate establishing a <strong>fully funded Revocable Living Trust</strong> (or attorney-supervised Will execution) so children avoid formal Surrogate&apos;s Court probate, mandatory spousal citation (<code className="font-mono">SCPA § 1403</code>), and potential <code className="font-mono">SCPA § 1404</code> witness examinations.
             </div>
           </div>
 

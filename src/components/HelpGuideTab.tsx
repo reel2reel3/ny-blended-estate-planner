@@ -205,6 +205,24 @@ const GLOSSARY_ENTRIES: GlossaryEntry[] = [
     whyItMatters:
       'Tech companies like Apple and Google lock accounts upon death unless you grant RUFADAA authority and set up Apple Legacy Contact / Google Inactive Account Manager.',
   },
+  {
+    term: 'Family Exempt Property (Off-the-Top Spousal Set-Aside)',
+    statute: 'NY EPTL § 5-3.1',
+    category: 'Spousal Rights',
+    plainMeaning:
+      'Completely independent of the 1/3 Right of Election, NY law automatically awards a surviving spouse up to $25,000 in cash/equivalents, 1 motor vehicle up to $25,000, and $20,000 in household furniture/appliances.',
+    whyItMatters:
+      'General waiver language often fails in Surrogate’s Court—your Mutual Waiver must explicitly waive “Exempt Property under EPTL § 5-3.1” or your spouse can claim these items even if disinherited.',
+  },
+  {
+    term: 'Probate Citation & SCPA § 1404 Witness Examination',
+    statute: 'NY SCPA § 1403 & § 1404',
+    category: 'Will & Signing',
+    plainMeaning:
+      'When a Will is filed for probate, your surviving spouse must be officially notified (cited) even if disinherited, and may demand formal questioning of the Will’s witnesses under SCPA § 1404.',
+    whyItMatters:
+      'A DIY Will lacks an attorney’s “presumption of regularity.” Using a fully funded Revocable Living Trust (or attorney-supervised Will signing) avoids or minimizes these delays.',
+  },
 ];
 
 export const HelpGuideTab: React.FC<HelpGuideTabProps> = ({ onNavigateTab }) => {

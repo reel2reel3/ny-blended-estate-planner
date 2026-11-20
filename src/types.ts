@@ -5,6 +5,7 @@ export type AccountType =
   | 'Checking Account'
   | 'Savings / CD'
   | 'Workplace 401(k)/Pension'
+  | 'Real Property (NY Home/Condo/Co-op)'
   | 'Personal Property';
 
 export type OwnershipTitle = 'Sole Name' | 'Joint with Right of Survivorship' | 'Tenants in Common';
@@ -13,6 +14,8 @@ export type TransferMechanism =
   | 'Named IRA/Plan Beneficiary'
   | 'TOD (Transfer on Death)'
   | 'POD (Payable on Death / Totten Trust)'
+  | 'NY Transfer on Death Deed (RPL § 424)'
+  | 'Revocable Living Trust'
   | 'None (Probate Asset)';
 
 export interface BeneficiarySplit {
