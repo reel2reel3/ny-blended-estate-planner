@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --navy-primary: #0f172a;
+  --navy-secondary: #1e293b;
+  --emerald-compliant: #059669;
+  --amber-warning: #d97706;
+  --red-statutory: #dc2626;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+.font-legal {
+  font-family: 'Georgia', 'Times New Roman', Times, serif;
+}
+
+/* Dedicated US Letter @media print rules for Will & Attorney Prep Packet */
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 0.65in 0.75in;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+    line-height: 1.45 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Hide all navigation, controls, alerts, and non-printable UI chrome */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Reset layout wrappers for clean document flow */
+  .print-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+  }
+
+  /* Force explicit page break for SCPA § 1406 Self-Proving Affidavit */
+  .print-page-break {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  /* Prevent awkward splits inside signature blocks or statutory clauses */
+  .print-avoid-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}
