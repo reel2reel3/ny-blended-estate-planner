@@ -83,6 +83,8 @@
       'Checking Account',
       'Savings / CD',
       'Workplace 401(k)/Pension',
+      'Life Insurance',
+      'Annuity',
       'Real Property (NY Home/Condo/Co-op)',
       'Personal Property'
     ];
@@ -159,24 +161,24 @@
       },
       {
         term: 'Deed-Acknowledged Mutual Spousal Waiver',
-        statute: 'NY EPTL § 5-1.1-A(e) & DRL § 236(B)(3)',
+        statute: 'NY EPTL § 5-1.1-A(e), § 5-3.1 & DRL § 236(B)(3)',
         category: 'Spousal Rights',
-        plainMeaning: 'A formal written agreement where both spouses waive their 1/3 elective share rights against each other’s separate estates. Under NY law, it must be signed before a Notary Public using the exact certificate wording used to record a New York real estate deed.',
-        whyItMatters: 'This is the ONLY way under New York law to guarantee 100% of your IRAs, TOD/POD accounts, and estate pass to your children free of spousal or Medicaid claims.'
+        plainMeaning: 'A formal written agreement where both spouses waive their 1/3 elective share rights, EPTL § 5-3.1 exempt property rights, and priority to serve as administrator. Under NY law, it must be signed and formally acknowledged in the manner required to record a New York real estate deed (RPL § 309-a form is best practice).',
+        whyItMatters: 'A properly acknowledged mutual waiver is the standard NY tool to ensure your IRAs, TOD/POD accounts, and estate pass to your children. Note: signing a waiver when long-term care is already foreseeable may raise Medicaid transfer-penalty review—discuss timing with a NY elder-law attorney.'
       },
       {
         term: 'ERISA Spousal Consent Rule (401(k) vs. IRA)',
         statute: '29 U.S.C. § 1055 (Federal ERISA)',
         category: 'Spousal Rights',
-        plainMeaning: 'Federal law governing employer 401(k) and pension plans automatically makes your current spouse your 100% beneficiary unless your spouse signs a notarized plan waiver. Individual IRAs (Traditional and Roth) are NOT subject to this federal rule.',
-        whyItMatters: 'If you have an old workplace 401(k), rolling it over into a Rollover IRA in your sole name lets you name your children as primary beneficiaries immediately.'
+        plainMeaning: 'Federal law governing employer 401(k) and pension plans automatically makes your current spouse your beneficiary unless your spouse signs a notarized plan waiver. Individual IRAs (Traditional and Roth) are NOT subject to this federal ERISA consent rule.',
+        whyItMatters: 'Check your specific 401(k) plan rules: depending on the plan document, even rolling a 401(k) over into a Rollover IRA while married may require spousal consent.'
       },
       {
         term: 'Disinterested Witnesses',
         statute: 'NY EPTL § 3-3.2',
         category: 'Will & Signing',
-        plainMeaning: 'Two adult witnesses to your Will who do NOT inherit anything under the Will (i.e., neighbors, coworkers, or friends—NEVER your children or spouse).',
-        whyItMatters: 'If a child acts as one of the two necessary witnesses to your Will, New York law voids their inheritance under the Will!'
+        plainMeaning: 'Two adult witnesses to your Will who do NOT inherit anything under the Will and are NOT named as Executor (i.e., neighbors, coworkers, or friends—never your children or spouse).',
+        whyItMatters: 'Under EPTL § 3-3.2, a bequest to an attesting witness can be voided unless there are at least two other disinterested witnesses (a distributee-witness keeps only the lesser of the bequest or their intestate share). Using completely disinterested witnesses avoids this risk entirely.'
       },
       {
         term: 'Self-Proving Witness Affidavit',
@@ -187,17 +189,17 @@
       },
       {
         term: 'Surrogate’s Court Staple Rule',
-        statute: 'NY Surrogate’s Court Rule § 207.19',
+        statute: 'NY Surrogate’s Court Practice',
         category: 'Will & Signing',
         plainMeaning: 'Once your printed Will and Self-Proving Affidavit are stapled together and signed, the staple must NEVER be removed—not even to feed pages into a scanner.',
-        whyItMatters: 'Extra staple holes trigger an investigation by the Surrogate’s Court clerk into whether pages were secretly swapped after signing.'
+        whyItMatters: 'Extra staple holes trigger an investigation by the Surrogate’s Court clerk into whether pages were secretly swapped after signing, requiring a formal explanation affidavit.'
       },
       {
         term: 'NY Statutory Short Form Power of Attorney (POA)',
-        statute: 'NY GOL § 5-1513',
+        statute: 'NY GOL § 5-1513 & § 5-1501B',
         category: 'Powers & Medical',
         plainMeaning: 'Legal document appointing trusted person(s) (such as your adult children) to handle your banking, taxes, and financial affairs if you become incapacitated during your lifetime.',
-        whyItMatters: 'Since June 2021, NY requires your POA to be signed before TWO disinterested witnesses PLUS a Notary Public.'
+        whyItMatters: 'Since June 2021, NY abolished the separate Statutory Gifts Rider (gifting over $5,000 now goes in Modifications) and requires a notarized acknowledgment plus two disinterested witnesses (the notary may serve as one of the two witnesses; witnesses cannot be named agents or gift recipients).'
       },
       {
         term: 'NY Health Care Proxy',
@@ -559,9 +561,18 @@
       return getDefaultState();
     }
 
+    const ACTIVE_PLAN_NAME_KEY = 'ny_blended_estate_active_plan_name_v1';
+    function loadActivePlanName() {
+      try {
+        const saved = localStorage.getItem(ACTIVE_PLAN_NAME_KEY);
+        if (saved && saved.trim()) return saved;
+      } catch (e) {}
+      return 'Robert J. Vance - Baseline Plan';
+    }
+
     let state = loadState();
     let savedPlans = loadSavedPlans();
-    let activePlanName = 'Robert J. Vance - Baseline Plan';
+    let activePlanName = loadActivePlanName();
     let isPlanModalOpen = false;
     let planModalMode = 'open'; // 'open' | 'save'
     let planNameInput = activePlanName;
@@ -601,6 +612,7 @@
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         localStorage.setItem(SAVED_PLANS_KEY, JSON.stringify(savedPlans));
+        localStorage.setItem(ACTIVE_PLAN_NAME_KEY, activePlanName || '');
       } catch (e) {
         console.warn('Could not save state to localStorage:', e);
       }
@@ -1842,10 +1854,10 @@
               ${qualifiesSmallEstate ? `
                 <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-950 text-xs sm:text-sm">
                   <div class="font-bold text-emerald-900">
-                    ✓ Qualifies for NY Voluntary Administration — $1 Small Estate Affidavit, avoids formal probate
+                    ✓ Qualifies for NY Voluntary Administration — $1 Small Estate Affidavit (Faster &amp; Simpler)
                   </div>
                   <p class="text-xs text-emerald-800 mt-0.5">
-                    Sole-name probate personal property (${formatCurrency(totalSoleProbate)}) is at or below the $50,000 statutory threshold under <code class="font-mono">SCPA § 1301</code> (strictly personal property; no unprotected sole-name NY real estate).
+                    Sole-name probate personal property (${formatCurrency(totalSoleProbate)}) is at or below the $50,000 limit under <code class="font-mono">SCPA § 1301</code> (personal property only, exclusive of <code class="font-mono">EPTL § 5-3.1</code> exempt property). <em>Note:</em> Voluntary Administration still requires mailing notice to distributees (including your spouse), so a Mutual Waiver remains essential—the benefit here is speed, simplicity, and avoiding formal probate costs.
                   </p>
                 </div>
               ` : `
@@ -1853,12 +1865,12 @@
                   <div class="font-bold text-red-900">
                     ${hasProbateRealEstate
                       ? '⚠ Disqualified from NY Small Estate (SCPA § 1301) — Unprotected Sole-Name NY Real Estate Triggers Formal Probate'
-                      : '⚠ Exceeds NY $50,000 Small Estate Limit — Triggers formal Surrogate’s Court probate and mandatory court citation notices to surviving spouse'}
+                      : '⚠ Exceeds NY $50,000 Small Estate Limit — Requires Formal Surrogate’s Court Probate Proceeding'}
                   </div>
                   <p class="text-xs text-red-800 mt-0.5">
                     ${hasProbateRealEstate
                       ? 'Under <code class="font-mono">SCPA § 1301</code>, the $50,000 Small Estate limit applies <strong>strictly to personal property</strong>. Owning NY real estate in your sole name without a recorded <code class="font-mono">RPL § 424</code> TOD Deed or Revocable Living Trust automatically bars Voluntary Administration—even if your bank accounts are under $50,000!'
-                      : 'Under SCPA § 1403(1)(a), formal probate requires serving a court citation on your surviving spouse. Add TOD/POD beneficiary designations to bring sole-name probate personal property under $50,000.'}
+                      : 'Probate personal property exceeds $50,000, requiring a formal Surrogate’s Court proceeding (with formal <code class="font-mono">SCPA § 1403</code> citation to your spouse and higher legal fees/delays). Add TOD/POD designations to stay under $50,000.'}
                   </p>
                 </div>
               `}
@@ -1890,6 +1902,23 @@
 
           <!-- Automated NY Statutory Alerts -->
           <div class="space-y-3">
+            ${totalEstate >= 6500000 ? `
+              <div class="p-4 rounded-xl bg-red-50 border-2 border-red-400 text-red-950 text-xs">
+                <div class="font-bold text-sm text-red-900">
+                  ⚠ NY 2026 Estate Tax Cliff Alert (Exclusion: $7,350,000 | Cliff: $7,717,500)
+                </div>
+                <p class="mt-1 leading-relaxed">
+                  Because leaving 100% to your children uses <strong>$0 marital deduction</strong>, an estate exceeding New York’s 2026 exclusion ($7,350,000) faces NY’s steep estate tax “cliff” (at 105% / $7,717,500, the entire estate—not just the excess—is taxed by NY). Discuss gifting or a charitable “Santa Clause” formula with your NY estate attorney.
+                </p>
+              </div>
+            ` : ''}
+
+            ${state.accounts.some(a => a.accountType === 'Traditional IRA' || a.accountType === 'Taxable Brokerage') ? `
+              <div class="p-3.5 rounded-xl bg-sky-50 border border-sky-200 text-sky-950 text-xs">
+                <strong>Tax Note for Your Children:</strong> Under the federal SECURE Act, adult children inheriting a <strong>Traditional IRA</strong> must empty it within <strong>10 years</strong> and pay ordinary income tax on withdrawals—whereas <strong>Roth IRAs</strong> are tax-free and <strong>Taxable Brokerage (TOD)</strong> accounts receive a full <strong>step-up in cost basis</strong> at death.
+              </div>
+            ` : ''}
+
             ${unprotectedAccounts.length > 0 ? `
               <div class="p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-950">
                 <div class="flex flex-wrap items-center justify-between gap-2">
@@ -2226,12 +2255,14 @@
 
       const grossEstate = probateAssets + testamentarySubs;
       const expenses = Math.max(0, state.electiveShare.estimatedExpenses || 0);
+      const amountPassingToSpouse = Math.max(0, state.electiveShare.amountPassingToSpouse || 0);
       const netElectiveEstate = Math.max(0, grossEstate - expenses);
-      const statutoryElectiveShare =
+      const grossElectiveShare =
         netElectiveEstate === 0
           ? 0
           : Math.min(netElectiveEstate, Math.max(50000, netElectiveEstate / 3));
-      const childrenNetScenarioA = Math.max(0, netElectiveEstate - statutoryElectiveShare);
+      const statutoryElectiveShare = Math.max(0, grossElectiveShare - amountPassingToSpouse);
+      const childrenNetScenarioA = Math.max(0, netElectiveEstate - amountPassingToSpouse - statutoryElectiveShare);
 
       const helpBanner = renderSectionHelpBanner(
         'elective-share',
@@ -2239,14 +2270,14 @@
         "Many married New Yorkers assume that if they keep all accounts in their sole name and name their children as TOD/POD/IRA beneficiaries, 100% will go to their children. In New York, that is FALSE unless your spouse signs a formal written waiver. Under NY EPTL § 5-1.1-A, your spouse (or their Power of Attorney, guardian, or Medicaid if they ever need nursing home care) can claim 1/3 of your combined estate—clawing it back directly from your children's inherited IRAs and TOD/POD accounts.",
         [
           { title: 'Verify Your Auto-Pulled Estate Totals', detail: 'Your Probate Assets and Testamentary Substitutes (IRAs, TOD, POD) are automatically pulled from Tab 1. You can check "Manual Override" to test different what-if numbers.' },
-          { title: 'Enter Estimated Funeral, Debt & Admin Expenses', detail: 'Enter approximate final expenses (e.g., $15,000–$25,000). New York deducts these before computing the 1/3 spousal share.' },
-          { title: 'Compare Scenario A vs. Scenario B Below', detail: 'Review Scenario A to see the exact dollar amount clawed back from each account without a waiver, and Scenario B to see how a Deed-Acknowledged Mutual Waiver (EPTL § 5-1.1-A(e)) reduces the spousal claim to $0.' }
+          { title: 'Enter Final Expenses & Any Voluntary Provision for Spouse', detail: 'Enter approximate final expenses (e.g., $15,000–$25,000) and any amount passing outright to your spouse (default $0) to model partial or negotiated settlements.' },
+          { title: 'Compare Scenario A vs. Scenario B Below', detail: 'Review Scenario A to see the exact dollar amount clawed back from each account without a waiver, and Scenario B to see how a Deed-Acknowledged Mutual Waiver (EPTL § 5-1.1-A(e) & § 5-3.1) reduces the spousal claim to $0.' }
         ],
         [
-          { term: 'Right of Election (EPTL § 5-1.1-A)', definition: 'A surviving spouse’s statutory right in New York to take the greater of $50,000 or 1/3 (33.33%) of your Net Elective Estate.' },
-          { term: 'Testamentary Substitutes', definition: 'Non-probate accounts (IRAs, 401(k)s, TOD brokerage, POD bank accounts) that New York law still counts when calculating the 1/3 spousal share.' },
-          { term: 'Pro-Rata Clawback', definition: 'If an election is filed, every beneficiary of your IRAs, TODs, PODs, and Will must contribute their proportional share to pay the spouse’s 1/3 claim.' },
-          { term: 'Deed-Acknowledged Waiver (EPTL § 5-1.1-A(e))', definition: 'A written agreement signed by your spouse in front of a Notary Public using New York real-estate deed wording that permanently waives the 1/3 claim.' }
+          { term: 'Right of Election (EPTL § 5-1.1-A)', definition: 'A surviving spouse’s statutory right in New York to take the greater of $50,000 or 1/3 (33.33%) of your Net Elective Estate, reduced by anything passing outright to the spouse.' },
+          { term: 'Testamentary Substitutes', definition: 'Non-probate assets (IRAs, 401(k)s, TOD brokerage, POD bank accounts, cash-value life insurance) counted when calculating the 1/3 spousal share. (Term/employer life insurance is nuanced under NY case law—verify with counsel.)' },
+          { term: 'Pro-Rata Clawback', definition: 'If an election is filed, beneficiaries of your IRAs, TODs, PODs, and Will contribute their proportional share to pay the spouse’s unpaid net elective share.' },
+          { term: 'Deed-Acknowledged Waiver (EPTL § 5-1.1-A(e))', definition: 'A signed written agreement formally acknowledged before a Notary Public in NY real-estate deed form waiving spousal inheritance & exempt property rights.' }
         ]
       );
 
@@ -2271,6 +2302,7 @@
                 <h3 class="text-base font-bold text-slate-900">Simulator Inputs</h3>
                 <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
                   <input
+                    id="elective-manual-override"
                     type="checkbox"
                     ${state.electiveShare.useManualOverride ? 'checked' : ''}
                     onchange="toggleElectiveOverride(this.checked)"
@@ -2286,6 +2318,7 @@
                   ${!state.electiveShare.useManualOverride ? `<span class="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-medium">Auto-pulled from Tab 1</span>` : ''}
                 </div>
                 <input
+                  id="elective-probate-input"
                   type="number"
                   min="0"
                   step="500"
@@ -2302,6 +2335,7 @@
                   ${!state.electiveShare.useManualOverride ? `<span class="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-medium">Auto-pulled from Tab 1</span>` : ''}
                 </div>
                 <input
+                  id="elective-subs-input"
                   type="number"
                   min="0"
                   step="1000"
@@ -2317,6 +2351,7 @@
                   Estimated Debts, Funeral &amp; Administration Expenses ($)
                 </label>
                 <input
+                  id="elective-expenses-input"
                   type="number"
                   min="0"
                   step="500"
@@ -2324,6 +2359,24 @@
                   oninput="updateElectiveInput('estimatedExpenses', this.value)"
                   class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-mono text-slate-900"
                 />
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">
+                  Credit: Amount Passing Outright to Spouse ($) <span class="text-slate-400 font-normal">(Optional)</span>
+                </label>
+                <input
+                  id="elective-spouse-credit-input"
+                  type="number"
+                  min="0"
+                  step="1000"
+                  value="${amountPassingToSpouse}"
+                  oninput="updateElectiveInput('amountPassingToSpouse', this.value)"
+                  class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-mono text-slate-900"
+                />
+                <p class="text-[11px] text-slate-500 mt-1">
+                  Leave at $0 if leaving 100% to children, or enter a negotiated sum / survivorship benefit to see the remaining net clawback.
+                </p>
               </div>
             </div>
 
@@ -2349,9 +2402,15 @@
                     <span>Net Elective Estate = (Probate + Substitutes) - Expenses</span>
                     <span class="font-mono text-base">${formatCurrency(netElectiveEstate)}</span>
                   </div>
+                  ${amountPassingToSpouse > 0 ? `
+                    <div class="flex justify-between py-1.5 px-3 border-b border-slate-100 text-xs">
+                      <span class="text-slate-600">Gross 1/3 Statutory Share (${formatCurrency(grossElectiveShare)}) minus Credit Passing to Spouse</span>
+                      <span class="font-mono font-semibold text-emerald-700">- ${formatCurrency(amountPassingToSpouse)}</span>
+                    </div>
+                  ` : ''}
                   <div class="flex justify-between items-center py-2.5 px-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-950">
                     <div>
-                      <div class="font-bold">Statutory Elective Share (Greater of $50,000 or 1/3 of Net Estate)</div>
+                      <div class="font-bold">Net Unpaid Elective Share Claim (Greater of $50k or 1/3, less Spouse Credit)</div>
                       <div class="text-xs text-amber-800">Capped at 100% of Net Elective Estate if total estate is under $50,000</div>
                     </div>
                     <span class="font-mono text-lg font-bold text-red-700">${formatCurrency(statutoryElectiveShare)}</span>
@@ -2549,6 +2608,7 @@
                   <div class="flex items-center gap-2">
                     <span class="text-xs font-mono text-slate-400 w-5">${idx + 1}.</span>
                     <input
+                      id="will-child-${idx}"
                       type="text"
                       placeholder="Child's Full Legal Name"
                       value="${escapeHtml(ch.fullName)}"
@@ -2571,10 +2631,29 @@
                 </div>
               </div>
 
+              <div class="p-3 rounded-lg bg-amber-50/70 border border-amber-200">
+                <label class="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    id="will-waiver-executed"
+                    type="checkbox"
+                    ${state.will.waiverAlreadyExecuted ? 'checked' : ''}
+                    onchange="updateWillField('waiverAlreadyExecuted', this.checked)"
+                    class="w-4 h-4 mt-0.5 accent-amber-700 cursor-pointer"
+                  />
+                  <div>
+                    <div class="text-xs font-bold text-amber-950">Have You Already Signed the Mutual Spousal Waiver?</div>
+                    <div class="text-[11px] text-amber-900 mt-0.5">
+                      Leave unchecked if not signed yet so Article I does not contain an inaccurate recital.
+                    </div>
+                  </div>
+                </label>
+              </div>
+
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200">
                 <div>
                   <label class="block text-xs font-semibold text-slate-700 mb-1">Primary Executor (Child 1)</label>
                   <input
+                    id="will-primary-executor"
                     type="text"
                     value="${escapeHtml(state.will.primaryExecutor)}"
                     oninput="updateWillField('primaryExecutor', this.value)"
@@ -2584,6 +2663,7 @@
                 <div>
                   <label class="block text-xs font-semibold text-slate-700 mb-1">Successor Executor (Child 2)</label>
                   <input
+                    id="will-successor-executor"
                     type="text"
                     value="${escapeHtml(state.will.successorExecutor)}"
                     oninput="updateWillField('successorExecutor', this.value)"
@@ -2622,7 +2702,9 @@
                 <div class="space-y-2 print-avoid-break">
                   <h3 class="text-sm font-bold uppercase underline">Article I — Family &amp; Intentional Omission</h3>
                   <p class="text-sm text-justify">
-                    I am married to <strong>${escapeHtml(state.will.spouseName || '[SPOUSE NAME]')}</strong>. I have ${state.will.children.length > 0 ? state.will.children.length : '[NUMBER]'} ${state.will.children.length === 1 ? 'child' : 'children'} from a prior relationship, namely: <strong>${escapeHtml(childrenNames)}</strong>. I have intentionally—and not out of oversight or mistake—made no financial provision in this Will for my spouse, <strong>${escapeHtml(state.will.spouseName || '[SPOUSE NAME]')}</strong>, in accordance with our mutual agreement to keep separate estates for our respective children and our mutual written waivers of both the spousal right of election (<code class="font-mono text-xs">EPTL § 5-1.1-A(e)</code>) and family exempt property rights (<code class="font-mono text-xs">EPTL § 5-3.1</code>).
+                    I am married to <strong>${escapeHtml(state.will.spouseName || '[SPOUSE NAME]')}</strong>. I have ${state.will.children.length > 0 ? state.will.children.length : '[NUMBER]'} ${state.will.children.length === 1 ? 'child' : 'children'} from a prior relationship, namely: <strong>${escapeHtml(childrenNames)}</strong>. I have intentionally—and not out of oversight or mistake—made no financial provision in this Will for my spouse, <strong>${escapeHtml(state.will.spouseName || '[SPOUSE NAME]')}</strong>, ${state.will.waiverAlreadyExecuted
+                      ? 'in accordance with our mutual agreement to keep separate estates for our respective children and our executed mutual written waivers of both the spousal right of election (<code class="font-mono text-xs">EPTL § 5-1.1-A(e)</code>) and family exempt property rights (<code class="font-mono text-xs">EPTL § 5-3.1</code>).'
+                      : 'as it is my express intent to leave my separate estate to my children from my prior relationship (and in contemplation of executing separate mutual waivers of spousal rights under <code class="font-mono text-xs">EPTL § 5-1.1-A(e)</code> and <code class="font-mono text-xs">EPTL § 5-3.1</code>).'}
                   </p>
                 </div>
 
@@ -2636,7 +2718,7 @@
                 <div class="space-y-2 print-avoid-break">
                   <h3 class="text-sm font-bold uppercase underline">Article III — Personal Property &amp; Residuary Estate</h3>
                   <p class="text-sm text-justify">
-                    Subject to our executed mutual waiver of family exempt property under New York <code class="font-mono text-xs">EPTL § 5-3.1</code> (including cash/equivalents, motor vehicles, and household effects), I give, devise, and bequeath all of my tangible personal property and all the rest, residue, and remainder of my probate estate, of whatsoever kind and wheresoever situated, in equal shares to my named children, <strong>${escapeHtml(childrenNames)}</strong>, <strong>${state.will.perStirpes ? 'per stirpes (EPTL § 1-2.14)' : 'or to the survivor(s) of them'}</strong>.
+                    ${state.will.waiverAlreadyExecuted ? 'Subject to our executed mutual waiver of family exempt property under New York <code class="font-mono text-xs">EPTL § 5-3.1</code>, ' : ''}I give, devise, and bequeath all of my tangible personal property and all the rest, residue, and remainder of my probate estate, of whatsoever kind and wheresoever situated, in equal shares to my named children, <strong>${escapeHtml(childrenNames)}</strong>, <strong>${state.will.perStirpes ? 'per stirpes (EPTL § 1-2.14)' : 'or to the survivor(s) of them'}</strong>. If none of my children or their issue shall survive me, my residuary estate shall pass to my heirs-at-law under New York law.
                   </p>
                 </div>
 
@@ -3144,16 +3226,16 @@
 
               <div class="p-3.5 rounded-lg border border-slate-300 bg-slate-50 text-xs space-y-1 print-avoid-break">
                 <div class="font-bold text-slate-950">
-                  1. Mutual Waivers of Right of Election (<code class="font-mono">EPTL § 5-1.1-A(e)</code>) &amp; Family Exempt Property (<code class="font-mono">EPTL § 5-3.1</code>)
+                  1. Mutual Waivers of Right of Election (<code class="font-mono">EPTL § 5-1.1-A(e)</code>), Family Exempt Property (<code class="font-mono">EPTL § 5-3.1</code>) &amp; Priority to Serve (<code class="font-mono">SCPA § 1001</code>)
                 </div>
                 <p class="text-slate-700">
-                  Executed with New York real-estate deed acknowledgment language (<code class="font-mono">DRL § 236(B)(3)</code> / <code class="font-mono">RPL § 309-a</code>) and independent-counsel waiver acknowledgment, irrevocably waiving: (1) all rights against probate assets and testamentary substitutes (IRAs, TOD, POD) under <code class="font-mono">EPTL § 5-1.1-A</code>, <strong>AND (2) explicitly waiving &ldquo;Exempt Property under EPTL § 5-3.1&rdquo;</strong> (up to $25k cash/equivalents, $25k vehicle, and $20k household goods — general waiver language is often insufficient in Surrogate&apos;s Court).
+                  Executed in writing, signed, and formally acknowledged in New York real-estate deed form (<code class="font-mono">DRL § 236(B)(3)</code> / <code class="font-mono">RPL § 309-a</code> — a wholly missing acknowledgment renders the waiver void), irrevocably waiving: (1) all rights against probate assets and testamentary substitutes (IRAs, TOD, POD) under <code class="font-mono">EPTL § 5-1.1-A</code>, (2) <strong>Exempt Property under <code class="font-mono">EPTL § 5-3.1</code></strong> (up to $25k cash, $25k vehicle, $20k household goods), and (3) priority to serve as estate Administrator (<code class="font-mono">SCPA § 1001</code>). <em>Timing Note:</em> Discuss Medicaid lookback/transfer implications with counsel if long-term care is already foreseeable.
                 </p>
               </div>
 
               <div class="p-3.5 rounded-lg border border-slate-300 bg-slate-50 text-xs space-y-1 print-avoid-break">
                 <div class="font-bold text-slate-950">
-                  2. NY Statutory Short Form Power of Attorney (<code class="font-mono">GOL § 5-1513</code>)
+                  2. NY Statutory Short Form Power of Attorney (<code class="font-mono">GOL § 5-1513</code> &amp; <code class="font-mono">§ 5-1501B</code>)
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-slate-800 pt-0.5">
                   <div><strong>Primary Agent:</strong> ${escapeHtml(prep.poaPrimaryAgent || '[Primary Agent]')}</div>
@@ -3162,7 +3244,7 @@
                 </div>
                 <p class="text-slate-700">
                   <strong>Gifting Modifications (Post-2021 Overhaul — SGR Abolished):</strong> ${prep.poaGiftingModifications ? escapeHtml(prep.poaGiftingNotes || 'Enabled — protect beneficiary designations') : 'Standard Statutory Cap ($5,000/yr); no authority to change beneficiary designations.'}
-                  <br /><em>Execution &amp; Formatting Note:</em> Requires <strong>two disinterested witnesses plus Notary Public</strong> (<code class="font-mono">GOL § 5-1501B</code>), and exact statutory wording &amp; 12-point font in the &ldquo;Caution to the Principal&rdquo; section or banks will reject it.
+                  <br /><em>Execution &amp; Formatting Note:</em> Under <code class="font-mono">GOL § 5-1501B</code>, requires notarized acknowledgment plus two disinterested witnesses (the notary taking the acknowledgment <strong>may serve as one of the two witnesses</strong>; witnesses cannot be named agents or permissible gift recipients), and exact statutory wording &amp; 12-point font in the &ldquo;Caution to the Principal&rdquo; section.
                 </p>
               </div>
 
@@ -3228,7 +3310,7 @@
                   <div class="font-bold text-slate-900">NY Real Estate Transfer Plan (<code class="font-mono">RPL § 424</code> / Trust)</div>
                   <p class="text-slate-700">
                     ${prep.ownsNyRealEstate
-                      ? '<strong>Strategy:</strong> ' + escapeHtml(prep.realEstatePlanOption || 'NY Transfer on Death Deed (RPL § 424)') + (prep.realEstateNotes ? ' — ' + escapeHtml(prep.realEstateNotes) : '') + '. <em>(Note: An RPL § 424 TOD Deed requires 2 witnesses + notary AND is completely void if not recorded with the county clerk prior to death.)</em>'
+                      ? '<strong>Strategy:</strong> ' + escapeHtml(prep.realEstatePlanOption || 'NY Transfer on Death Deed (RPL § 424)') + (prep.realEstateNotes ? ' — ' + escapeHtml(prep.realEstateNotes) : '') + '. <em>(Note: An RPL § 424 TOD Deed is revocable, requires 2 witnesses + notary, is void if not recorded before death, and creditors can reach TOD-deed property if the probate estate is insufficient.)</em>'
                       : 'No sole-name NY real estate reported at this time. (Note: SCPA § 1301 Small Estate limit excludes real property.)'}
                   </p>
                 </div>
@@ -3438,6 +3520,12 @@
     }
 
     function render() {
+      // Preserve active input focus & cursor position so typing never loses focus
+      const prevEl = document.activeElement;
+      const prevId = prevEl && prevEl.id ? prevEl.id : null;
+      const prevSelStart = prevEl && typeof prevEl.selectionStart === 'number' ? prevEl.selectionStart : null;
+      const prevSelEnd = prevEl && typeof prevEl.selectionEnd === 'number' ? prevEl.selectionEnd : null;
+
       const unprotectedCount = state.accounts.filter(
         a =>
           (a.accountType === 'Taxable Brokerage' && a.transferMechanism !== 'TOD (Transfer on Death)') ||
@@ -3445,11 +3533,19 @@
             a.transferMechanism !== 'POD (Payable on Death / Totten Trust)')
       ).length;
 
+      const hasProbateRealEstate = state.accounts.some(
+        a =>
+          a.accountType === 'Real Property (NY Home/Condo/Co-op)' &&
+          a.ownershipTitle === 'Sole Name' &&
+          a.transferMechanism !== 'NY Transfer on Death Deed (RPL § 424)' &&
+          a.transferMechanism !== 'Revocable Living Trust'
+      );
+
       const totalSoleProbate = state.accounts
         .filter(a => a.ownershipTitle === 'Sole Name' && a.transferMechanism === 'None (Probate Asset)')
         .reduce((s, a) => s + a.balance, 0);
 
-      const probateExceedsLimit = totalSoleProbate > 50000;
+      const probateExceedsLimit = totalSoleProbate > 50000 || hasProbateRealEstate;
 
       let tabContent = '';
       if (activeTab === 'assets') tabContent = renderAssetTrackerTab();
@@ -3477,12 +3573,26 @@
             <div>
               <em>Educational &amp; organizational tool only. Not legal advice. Consult a New York estate planning attorney before executing legal instruments.</em>
             </div>
-            <div class="text-[11px] text-slate-400 font-mono shrink-0">
-              NY EPTL § 5-1.1-A • EPTL § 3-2.1 • SCPA § 1301 • SCPA § 1406 • GOL § 5-1513
+            <div class="text-[11px] text-slate-400 font-mono shrink-0 flex flex-wrap items-center gap-2">
+              <span class="px-2 py-0.5 rounded bg-slate-800 text-emerald-300 border border-slate-700">NY Law Verified: Nov 2026</span>
+              <span>EPTL § 5-1.1-A • § 5-3.1 • § 3-2.1 • SCPA § 1301 • GOL § 5-1513 • RPL § 424</span>
             </div>
           </div>
         </footer>
       `;
+
+      // Restore focus & selection if an input with an ID was active
+      if (prevId) {
+        const nextEl = document.getElementById(prevId);
+        if (nextEl) {
+          nextEl.focus();
+          if (prevSelStart !== null && typeof nextEl.setSelectionRange === 'function') {
+            try {
+              nextEl.setSelectionRange(prevSelStart, prevSelEnd);
+            } catch (e) {}
+          }
+        }
+      }
     }
 
     render();
