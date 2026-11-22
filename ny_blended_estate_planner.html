@@ -53,6 +53,15 @@
         page-break-inside: avoid !important;
         break-inside: avoid !important;
       }
+      body.printing-custom-binder #main-screen-content {
+        display: none !important;
+      }
+      body.printing-custom-binder #print-binder-root {
+        display: block !important;
+      }
+    }
+    #print-binder-root {
+      display: none;
     }
   </style>
 </head>
@@ -609,6 +618,47 @@
 
     let isSaveAsModalOpen = false;
     let saveAsFileNameInput = '';
+
+    let isPrintMenuOpen = false;
+    let activePrintScope = null;
+
+    window.togglePrintMenu = function(e) {
+      if (e) e.stopPropagation();
+      isPrintMenuOpen = !isPrintMenuOpen;
+      render();
+    };
+
+    window.closePrintMenu = function() {
+      if (!isPrintMenuOpen) return;
+      isPrintMenuOpen = false;
+      render();
+    };
+
+    document.addEventListener('click', function(e) {
+      if (isPrintMenuOpen && !e.target.closest('#print-export-dropdown-wrapper')) {
+        isPrintMenuOpen = false;
+        render();
+      }
+    });
+
+    window.printLegalForm = function(scope) {
+      isPrintMenuOpen = false;
+      activePrintScope = scope;
+      render();
+      document.body.classList.add('printing-custom-binder');
+
+      const cleanup = () => {
+        document.body.classList.remove('printing-custom-binder');
+        activePrintScope = null;
+        window.removeEventListener('afterprint', cleanup);
+      };
+      window.addEventListener('afterprint', cleanup);
+
+      setTimeout(() => {
+        window.print();
+        setTimeout(cleanup, 1500);
+      }, 120);
+    };
 
     let activeTab = 'profile';
     let editingAccountId = null;
@@ -1384,13 +1434,90 @@
                 </div>
               </div>
 
-              <!-- Top Toolbar: New Plan + Save As + Save Plan + Open Plan + Export + Import + Reset -->
+              <!-- Top Toolbar: Print/PDF Dropdown + New Plan + Save As + Save Plan + Open Plan + Import + Reset -->
               <div class="flex flex-wrap items-center gap-2">
+                <!-- Print / Export to PDF Dropdown -->
+                <div id="print-export-dropdown-wrapper" class="relative">
+                  <button
+                    id="btn-print-export-menu"
+                    type="button"
+                    onclick="togglePrintMenu(event)"
+                    class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-sm transition-all cursor-pointer ring-1 ring-amber-300"
+                    title="Print or Export US Letter PDF forms or complete signing binder"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                    </svg>
+                    <span>Print / Export to PDF</span>
+                    <svg class="w-3.5 h-3.5 transition-transform ${isPrintMenuOpen ? 'rotate-180' : ''}" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                  </button>
+
+                  ${isPrintMenuOpen ? `
+                    <div class="absolute left-0 sm:right-0 sm:left-auto mt-2 w-80 rounded-2xl bg-white text-slate-900 shadow-2xl border border-slate-200 overflow-hidden z-50">
+                      <div class="px-4 py-3 border-b border-slate-100 bg-slate-50/70">
+                        <div class="text-[11px] font-bold uppercase tracking-wider text-slate-500">US LETTER PDF EXPORT</div>
+                        <div class="text-xs text-slate-500 mt-0.5">Choose a single form or full signing binder</div>
+                      </div>
+
+                      <!-- Complete Legal Binder -->
+                      <button
+                        type="button"
+                        onclick="printLegalForm('all')"
+                        class="w-full px-4 py-3 text-left hover:bg-amber-50/70 transition-colors border-b border-slate-100 flex items-start gap-3 cursor-pointer"
+                      >
+                        <span class="px-2 py-1 rounded-md bg-amber-100 text-amber-900 text-xs font-extrabold shrink-0 mt-0.5">All</span>
+                        <div>
+                          <div class="text-sm font-bold text-slate-900">Complete Legal Binder (All Forms)</div>
+                          <div class="text-xs text-slate-500 mt-0.5 leading-snug">Waiver, 2021 POA, Health Care Proxy, Living Will, Remains, Backup Will &amp; Checklist</div>
+                        </div>
+                      </button>
+
+                      <!-- Individual Legal Forms -->
+                      <div class="py-1.5 divide-y divide-slate-50">
+                        <button type="button" onclick="printLegalForm('waiver')" class="w-full px-4 py-2.5 text-left hover:bg-slate-50 flex items-center justify-between gap-2 cursor-pointer">
+                          <span class="text-xs sm:text-sm font-medium text-slate-800">1. Mutual Spousal Waiver</span>
+                          <span class="text-[11px] font-mono text-slate-400 shrink-0">EPTL 5-1.1-A</span>
+                        </button>
+                        <button type="button" onclick="printLegalForm('poa')" class="w-full px-4 py-2.5 text-left hover:bg-slate-50 flex items-center justify-between gap-2 cursor-pointer">
+                          <span class="text-xs sm:text-sm font-medium text-slate-800">2. Statutory Power of Attorney</span>
+                          <span class="text-[11px] font-mono text-slate-400 shrink-0">GOL 5-1513</span>
+                        </button>
+                        <button type="button" onclick="printLegalForm('hcp')" class="w-full px-4 py-2.5 text-left hover:bg-slate-50 flex items-center justify-between gap-2 cursor-pointer">
+                          <span class="text-xs sm:text-sm font-medium text-slate-800">3. Health Care Proxy &amp; Living Will</span>
+                          <span class="text-[11px] font-mono text-slate-400 shrink-0">PHL 2981</span>
+                        </button>
+                        <button type="button" onclick="printLegalForm('remains')" class="w-full px-4 py-2.5 text-left hover:bg-slate-50 flex items-center justify-between gap-2 cursor-pointer">
+                          <span class="text-xs sm:text-sm font-medium text-slate-800">4. Disposition of Remains</span>
+                          <span class="text-[11px] font-mono text-slate-400 shrink-0">PHL 4201</span>
+                        </button>
+                        <button type="button" onclick="printLegalForm('will')" class="w-full px-4 py-2.5 text-left hover:bg-slate-50 flex items-center justify-between gap-2 cursor-pointer">
+                          <span class="text-xs sm:text-sm font-medium text-slate-800">5. NY Backup Will &amp; Affidavit</span>
+                          <span class="text-[11px] font-mono text-slate-400 shrink-0">EPTL 3-2.1</span>
+                        </button>
+                        <button type="button" onclick="printLegalForm('attorney-packet')" class="w-full px-4 py-2.5 text-left hover:bg-slate-50 flex items-center justify-between gap-2 cursor-pointer">
+                          <span class="text-xs sm:text-sm font-medium text-slate-800">6. Attorney Visit Prep Packet</span>
+                          <span class="text-[11px] font-mono text-slate-400 shrink-0">Full Intake</span>
+                        </button>
+                      </div>
+
+                      <!-- Execution Guardrails Cheat Sheet -->
+                      <div class="border-t border-slate-200 bg-slate-50/50">
+                        <button type="button" onclick="printLegalForm('checklist')" class="w-full px-4 py-2.5 text-left hover:bg-slate-100 flex items-center justify-between gap-2 cursor-pointer">
+                          <span class="text-xs sm:text-sm font-medium text-slate-800">7. Execution Guardrails Cheat Sheet</span>
+                          <span class="text-[11px] font-mono text-slate-400 shrink-0">Checklist</span>
+                        </button>
+                      </div>
+                    </div>
+                  ` : ''}
+                </div>
+
                 <button
                   id="btn-new-plan"
                   type="button"
                   onclick="createNewPlan()"
-                  class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-white hover:bg-slate-100 text-[#0F172A] shadow-sm transition-all cursor-pointer border border-slate-300"
+                  class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white hover:bg-slate-100 text-[#0F172A] shadow-sm transition-all cursor-pointer border border-slate-300"
                   title="Start a new blank estate plan (clears current form for new testator and accounts)"
                 >
                   📄 New Plan
@@ -1400,8 +1527,8 @@
                   id="btn-save-as"
                   type="button"
                   onclick="exportBackup()"
-                  class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-sm transition-all cursor-pointer ring-1 ring-amber-300"
-                  title="Save As... Prompts your computer to pick an exact folder (Desktop, Documents, USB) and file name"
+                  class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition-all cursor-pointer"
+                  title="Save As... Save a JSON backup file to your computer"
                 >
                   📁 Save As...
                 </button>
@@ -3971,6 +4098,265 @@
       `;
     }
 
+    function renderPrintBinderRoot() {
+      if (!activePrintScope) return '';
+      const p = ensureProfile();
+      const prep = state.attorneyPrep;
+      const clientName = escapeHtml(state.will.testatorName || '[CLIENT FULL LEGAL NAME]');
+      const spouseName = escapeHtml(state.will.spouseName || '[SPOUSE FULL LEGAL NAME]');
+      const county = escapeHtml(state.will.county || '[COUNTY]');
+      const fullAddress = escapeHtml([p.streetAddress, p.city, p.state || 'NY', p.zip].filter(Boolean).join(', ') || (state.will.county + ' County, NY'));
+      const childrenNames = state.will.children.map(c => c.fullName.trim()).filter(Boolean).join(', ') || '[NAMES OF CHILDREN]';
+      const userTotal = state.accounts.reduce((s, a) => s + a.balance, 0);
+      const spouseTotal = prep.spouseAccounts.reduce((s, a) => s + a.balance, 0);
+      const draftBanner = `<div class="text-[10px] font-mono uppercase tracking-wider text-center border border-slate-400 bg-slate-100 py-1 px-2 mb-4">EDUCATIONAL DRAFT FOR REVIEW WITH LICENSED NEW YORK ATTORNEY — NOT LEGAL ADVICE</div>`;
+
+      const sections = [];
+      const include = (key) => activePrintScope === 'all' || activePrintScope === key;
+
+      // 1. Mutual Spousal Waiver (EPTL § 5-1.1-A / § 5-3.1 / SCPA § 1001)
+      if (include('waiver')) {
+        sections.push(`
+          <section class="font-legal text-black space-y-4">
+            ${draftBanner}
+            <div class="text-center border-b-2 border-black pb-3">
+              <h1 class="text-lg font-bold uppercase tracking-wide">Mutual Waiver of Spousal Right of Election, Family Exempt Property &amp; Priority to Serve</h1>
+              <p class="text-xs mt-1">Pursuant to NY EPTL § 5-1.1-A(e), EPTL § 5-3.1, SCPA § 1001, DRL § 236(B)(3) &amp; RPL § 309-a</p>
+            </div>
+            <p class="text-sm text-justify">
+              <strong>AGREEMENT &amp; MUTUAL WAIVER</strong> made by and between <strong>${clientName}</strong>${p.dob ? ' (DOB: ' + escapeHtml(p.dob) + ')' : ''}, residing at ${fullAddress} (${county} County, State of New York), and <strong>${spouseName}</strong>${p.spouseDob ? ' (DOB: ' + escapeHtml(p.spouseDob) + ')' : ''}${p.marriageDate ? ', who were married on ' + escapeHtml(p.marriageDate) : ''}.
+            </p>
+            <p class="text-sm text-justify">
+              <strong>1. Mutual Waiver of Right of Election (EPTL § 5-1.1-A):</strong> Each spouse hereby irrevocably waives, releases, and relinquishes any and all statutory rights of election under New York Estates, Powers and Trusts Law § 5-1.1-A against any Last Will and Testament, codicil, trust, or testamentary substitute (including Traditional and Roth IRAs, 401(k) plans, TOD brokerage accounts, POD/Totten Trust bank accounts, annuities, and real property) of the other spouse, whether now owned or hereafter acquired.
+            </p>
+            <p class="text-sm text-justify">
+              <strong>2. Express Waiver of Family Exempt Property (EPTL § 5-3.1) &amp; Intestate Rights:</strong> Each spouse expressly and specifically waives all rights to statutory family exempt property under New York <strong>EPTL § 5-3.1</strong> (including up to $25,000 in cash or cash equivalents, any motor vehicle up to $25,000, and up to $20,000 in household furniture, appliances, and personal effects), as well as any right to inherit by intestacy under EPTL § 4-1.1 or priority to serve as Administrator under <strong>SCPA § 1001</strong>.
+            </p>
+            <p class="text-sm text-justify">
+              <strong>3. Financial Disclosure &amp; Counsel:</strong> Both spouses acknowledge receipt of fair financial disclosure (Client Separate Assets: <strong>${formatCurrency(userTotal)}</strong>; Spouse Separate Assets: <strong>${formatCurrency(spouseTotal)}</strong> — Schedules A &amp; B attached) and confirm they have had the opportunity to consult independent New York legal counsel.
+            </p>
+            <div class="grid grid-cols-2 gap-8 pt-6 text-xs print-avoid-break">
+              <div><div class="border-b border-black h-8"></div><div class="mt-1 font-bold">${clientName} — Date: ____________</div></div>
+              <div><div class="border-b border-black h-8"></div><div class="mt-1 font-bold">${spouseName} — Date: ____________</div></div>
+            </div>
+            <div class="p-3 border border-black text-xs space-y-2 mt-4 print-avoid-break">
+              <div class="font-bold uppercase">New York Real-Estate Deed Acknowledgment Certificate (RPL § 309-a — Mandatory)</div>
+              <p>STATE OF NEW YORK, COUNTY OF ${county.toUpperCase()} ) ss.: On the ____ day of ____________, 20____, before me, the undersigned Notary Public, personally appeared <strong>${clientName}</strong> and <strong>${spouseName}</strong>, personally known to me or proved to me on the basis of satisfactory evidence to be the individuals whose names are subscribed to the within instrument and acknowledged to me that they executed the same in their capacities, and that by their signatures on the instrument, the individuals executed the instrument.</p>
+              <div class="pt-4"><div class="border-b border-black w-64 h-6"></div><div class="mt-1">Notary Public, State of New York (Stamp &amp; Commission Expiration)</div></div>
+            </div>
+          </section>
+        `);
+      }
+
+      // 2. Statutory Power of Attorney (GOL § 5-1513 / § 5-1501B)
+      if (include('poa')) {
+        sections.push(`
+          <section class="font-legal text-black space-y-4 ${sections.length > 0 ? 'print-page-break' : ''}">
+            ${draftBanner}
+            <div class="text-center border-b-2 border-black pb-3">
+              <h1 class="text-lg font-bold uppercase tracking-wide">NY Statutory Short Form Power of Attorney — Drafting Specification</h1>
+              <p class="text-xs mt-1">Post-2021 Overhaul — NY GOL § 5-1513 &amp; § 5-1501B (Statutory Gifts Rider Abolished)</p>
+            </div>
+            <div class="grid grid-cols-2 gap-3 text-sm border border-slate-400 p-3">
+              <div><strong>Principal:</strong> ${clientName}</div>
+              <div><strong>Residence:</strong> ${fullAddress}</div>
+              <div><strong>Primary Agent:</strong> ${escapeHtml(prep.poaPrimaryAgent || '[PRIMARY AGENT]')}</div>
+              <div><strong>Successor Agent:</strong> ${escapeHtml(prep.poaSuccessorAgent || '[SUCCESSOR AGENT]')}</div>
+              <div><strong>Co-Agent Rule:</strong> ${escapeHtml(prep.poaCoAgentRule || 'Act Separately')}</div>
+              <div><strong>Durability:</strong> Durable (Effective Immediately &amp; Continues Upon Incapacity)</div>
+            </div>
+            <div class="text-sm space-y-2">
+              <p><strong>Section (g) Gifting &amp; Blended-Family Protective Modifications:</strong> ${prep.poaGiftingModifications ? escapeHtml(prep.poaGiftingNotes || 'Authorize gifting solely to Principal’s lineal descendants; strictly prohibit any Agent from altering TOD/POD/IRA beneficiary designations away from Principal’s children.') : 'Standard statutory cap ($5,000 aggregate annual limit); no authority to alter beneficiary designations.'}</p>
+              <p><strong>Digital Assets Authority (NY EPTL Art. 13-A / RUFADAA):</strong> ${(prep.includeDigitalAssetsClause ?? true) ? 'Grant Agent explicit statutory authority to access, manage, and close electronic communications and digital financial accounts.' : 'Not included.'}</p>
+              <p class="text-xs italic border-t border-slate-300 pt-2">
+                <strong>Mandatory NY Execution &amp; Formatting Rules (GOL § 5-1501B &amp; § 5-1513):</strong> (1) Must use the exact statutory wording and 12-point font for the "Caution to the Principal" section so banks accept it. (2) Must be signed by the Principal, acknowledged before a Notary Public, AND witnessed by two disinterested persons (the Notary taking the acknowledgment may serve as one of the two witnesses; neither witness may be an Agent or permissible gift recipient).
+              </p>
+            </div>
+          </section>
+        `);
+      }
+
+      // 3. Health Care Proxy, Living Will & HIPAA Release (PHL § 2981)
+      if (include('hcp')) {
+        sections.push(`
+          <section class="font-legal text-black space-y-4 ${sections.length > 0 ? 'print-page-break' : ''}">
+            ${draftBanner}
+            <div class="text-center border-b-2 border-black pb-3">
+              <h1 class="text-lg font-bold uppercase tracking-wide">NY Health Care Proxy, Living Will &amp; HIPAA Authorization</h1>
+              <p class="text-xs mt-1">NY Public Health Law Article 29-C (§ 2981) &amp; 45 CFR § 164.508</p>
+            </div>
+            <p class="text-sm">I, <strong>${clientName}</strong>, residing at ${fullAddress}, hereby appoint the following Health Care Agent to make any and all health care decisions for me if I become unable to make my own health care decisions:</p>
+            <div class="grid grid-cols-2 gap-4 text-sm border border-slate-400 p-3">
+              <div><strong>Primary Health Care Agent:</strong><br/>${escapeHtml(prep.hcpPrimaryAgent || '[PRIMARY AGENT]')}<br/>Phone: ${escapeHtml(prep.hcpPrimaryPhone || '[PHONE]')}</div>
+              <div><strong>Alternate / Backup Agent:</strong><br/>${escapeHtml(prep.hcpBackupAgent || '[BACKUP AGENT]')}<br/>Phone: ${escapeHtml(prep.hcpBackupPhone || '[PHONE]')}</div>
+            </div>
+            <div class="text-sm space-y-2 border border-slate-400 p-3">
+              <div class="font-bold uppercase text-xs">Living Will — Clear &amp; Convincing Evidence of End-of-Life Wishes</div>
+              <p><strong>Care Preference:</strong> ${escapeHtml(prep.livingWillPreference || 'Comfort Care / No Artificial Prolongation')}</p>
+              <p><strong>Artificial Nutrition &amp; Hydration (NY Explicit Requirement):</strong> ${escapeHtml(prep.livingWillArtificialNutrition || 'Withhold / Withdraw if Terminal or Permanent Unconsciousness')}</p>
+            </div>
+            <div class="text-sm border border-slate-400 p-3">
+              <div class="font-bold uppercase text-xs mb-1">Stand-Alone HIPAA Medical Information Release (Effective Immediately)</div>
+              <p>Authorized Family Members (may speak with physicians, review records &amp; handle billing prior to incapacity): <strong>${escapeHtml(prep.hipaaAuthorizedPersons || childrenNames)}</strong></p>
+            </div>
+            <div class="pt-4 space-y-4 text-xs print-avoid-break">
+              <div class="grid grid-cols-2 gap-8">
+                <div><div class="border-b border-black h-7"></div><div class="mt-1 font-bold">Signature of ${clientName}</div></div>
+                <div><div class="border-b border-black h-7"></div><div class="mt-1 font-bold">Date</div></div>
+              </div>
+              <p class="italic">Statement by Witnesses (Must be 2 adults who are NOT named as Health Care Agents above): I declare that the person who signed this document is personally known to me and appears to be of sound mind and acting of their own free will.</p>
+              <div class="grid grid-cols-2 gap-8">
+                <div><div class="border-b border-black h-6"></div><div>Witness 1 Signature, Printed Name &amp; Address</div></div>
+                <div><div class="border-b border-black h-6"></div><div>Witness 2 Signature, Printed Name &amp; Address</div></div>
+              </div>
+            </div>
+          </section>
+        `);
+      }
+
+      // 4. Appointment of Agent to Control Disposition of Remains (PHL § 4201)
+      if (include('remains')) {
+        sections.push(`
+          <section class="font-legal text-black space-y-4 ${sections.length > 0 ? 'print-page-break' : ''}">
+            ${draftBanner}
+            <div class="text-center border-b-2 border-black pb-3">
+              <h1 class="text-lg font-bold uppercase tracking-wide">Appointment of Agent to Control Disposition of Remains</h1>
+              <p class="text-xs mt-1">New York Public Health Law § 4201 (Overrides Default Spousal Control)</p>
+            </div>
+            <p class="text-sm text-justify">
+              I, <strong>${clientName}</strong>, residing at ${fullAddress}, being of sound mind, willfully and voluntarily make known my desire that, upon my death, the disposition of my remains shall be controlled by the designated Agent named below pursuant to New York Public Health Law § 4201:
+            </p>
+            <div class="grid grid-cols-2 gap-4 text-sm border border-slate-400 p-3">
+              <div><strong>Primary Disposition Agent:</strong><br/>${escapeHtml(prep.dispositionPrimaryAgent || '[PRIMARY AGENT]')}</div>
+              <div><strong>Successor Disposition Agent:</strong><br/>${escapeHtml(prep.dispositionSuccessorAgent || '[SUCCESSOR AGENT]')}</div>
+            </div>
+            <div class="text-sm border border-slate-400 p-3">
+              <strong>Special Directions / Funeral &amp; Burial/Cremation Wishes:</strong><br/>
+              ${escapeHtml(prep.dispositionWishes || '[Specify cremation, burial, memorial service, or religious preferences]')}
+            </div>
+            <div class="pt-4 space-y-4 text-xs print-avoid-break">
+              <div class="grid grid-cols-2 gap-8">
+                <div><div class="border-b border-black h-7"></div><div class="mt-1 font-bold">Signature of ${clientName}</div></div>
+                <div><div class="border-b border-black h-7"></div><div class="mt-1 font-bold">Date</div></div>
+              </div>
+              <div class="grid grid-cols-2 gap-8">
+                <div><div class="border-b border-black h-6"></div><div>Witness 1 Signature &amp; Address (Adult)</div></div>
+                <div><div class="border-b border-black h-6"></div><div>Witness 2 Signature &amp; Address (Adult)</div></div>
+              </div>
+              <p class="italic">Note: Under NY PHL § 4201, the named Agent(s) must also sign the statutory Acceptance of Appointment section before acting.</p>
+            </div>
+          </section>
+        `);
+      }
+
+      // 5. NY Backup Will & SCPA § 1406 Self-Proving Affidavit
+      if (include('will')) {
+        sections.push(`
+          <section class="font-legal text-black space-y-4 ${sections.length > 0 ? 'print-page-break' : ''}">
+            ${draftBanner}
+            <div class="text-center border-b-2 border-black pb-3">
+              <h1 class="text-lg font-bold uppercase tracking-wider">Last Will and Testament</h1>
+              <p class="text-sm font-bold uppercase mt-1">of ${clientName}</p>
+            </div>
+            <p class="text-sm text-justify">
+              I, <strong>${clientName}</strong>, residing and domiciled at ${fullAddress}, in the County of <strong>${county}</strong>, State of New York, being of sound and disposing mind and memory, do hereby make, publish, and declare this instrument to be my Last Will and Testament, hereby revoking all prior wills and codicils by me at any time heretofore made pursuant to New York EPTL § 3-4.1.
+            </p>
+            <p class="text-sm text-justify"><strong>Article I — Family &amp; Intentional Omission:</strong> I am married to <strong>${spouseName}</strong>. I have ${state.will.children.length > 0 ? state.will.children.length : '[NUMBER]'} ${state.will.children.length === 1 ? 'child' : 'children'} from a prior relationship, namely: <strong>${escapeHtml(childrenNames)}</strong>. I have intentionally—and not out of oversight or mistake—made no financial provision in this Will for my spouse, <strong>${spouseName}</strong>, ${state.will.waiverAlreadyExecuted ? 'in accordance with our mutual agreement to keep separate estates and our executed mutual written waivers of both the spousal right of election (EPTL § 5-1.1-A(e)) and family exempt property rights (EPTL § 5-3.1).' : 'as it is my express intent to leave my separate estate to my children from my prior relationship (and in contemplation of executing separate mutual waivers of spousal rights under EPTL § 5-1.1-A(e) and EPTL § 5-3.1).'}</p>
+            <p class="text-sm text-justify"><strong>Article II — Debts &amp; Final Expenses:</strong> I direct my Executor to pay all of my legally enforceable debts, funeral expenses, and reasonable estate administration expenses as soon after my death as practicable.</p>
+            <p class="text-sm text-justify"><strong>Article III — Personal Property &amp; Residuary Estate:</strong> ${state.will.waiverAlreadyExecuted ? 'Subject to our executed mutual waiver of family exempt property under EPTL § 5-3.1, ' : ''}I give, devise, and bequeath all of my tangible personal property and all the rest, residue, and remainder of my probate estate, in equal shares to my named children, <strong>${escapeHtml(childrenNames)}</strong>, <strong>${state.will.perStirpes ? 'per stirpes (EPTL § 1-2.14)' : 'or to the survivor(s) of them'}</strong>. If none of my children or their issue shall survive me, my residuary estate shall pass to my heirs-at-law under New York law.</p>
+            <p class="text-sm text-justify"><strong>Article IV — Executor &amp; Powers:</strong> I appoint <strong>${escapeHtml(state.will.primaryExecutor || '[PRIMARY EXECUTOR]')}</strong> as Executor, and <strong>${escapeHtml(state.will.successorExecutor || '[SUCCESSOR EXECUTOR]')}</strong> as Successor Executor, waiving fiduciary bond and granting full statutory powers under EPTL § 11-1.1${(prep.includeDigitalAssetsClause ?? true) ? ' and digital asset authority under EPTL Article 13-A' : ''}.</p>
+            <div class="pt-4 border-t border-black space-y-3 print-avoid-break">
+              <p class="text-sm"><strong>IN WITNESS WHEREOF</strong>, I have subscribed my name at the physical end of this Will (EPTL § 3-2.1) on this ____ day of ____________, 20____.</p>
+              <div class="grid grid-cols-2 gap-8 text-xs font-bold pt-2">
+                <div><div class="border-b border-black h-7"></div><div class="mt-1">Date</div></div>
+                <div><div class="border-b border-black h-7"></div><div class="mt-1">${clientName}, Testator</div></div>
+              </div>
+              <p class="text-xs italic">Attestation Clause: Subscribed, published, and declared by ${clientName} as their Last Will in our presence, and we at their request and in their presence signed as disinterested witnesses (not spouse, child, beneficiary, or Executor):</p>
+              <div class="grid grid-cols-2 gap-8 text-xs">
+                <div class="space-y-2"><div class="border-b border-black h-6"></div><div>Witness 1 Signature &amp; Printed Name</div><div class="border-b border-black h-6"></div><div>Witness 1 Residential Address</div></div>
+                <div class="space-y-2"><div class="border-b border-black h-6"></div><div>Witness 2 Signature &amp; Printed Name</div><div class="border-b border-black h-6"></div><div>Witness 2 Residential Address</div></div>
+              </div>
+            </div>
+            <div class="print-page-break space-y-3 pt-2">
+              <div class="text-center border-b-2 border-black pb-2">
+                <h2 class="text-base font-bold uppercase">Self-Proving Affidavit of Attesting Witnesses (NY SCPA § 1406)</h2>
+              </div>
+              <p class="text-xs">STATE OF NEW YORK, COUNTY OF ${county.toUpperCase()} ) ss.:</p>
+              <p class="text-sm text-justify">Each of the undersigned, individually and severally being duly sworn, deposes and says: The within Will was subscribed in our presence and sight at the end thereof by <strong>${clientName}</strong>, the within named Testator, on the ____ day of ____________, 20____. Said Testator declared the instrument to be their Last Will and Testament, appeared to be of sound mind, memory, and understanding, and over eighteen years of age. We signed our names and residential addresses as attesting witnesses at the Testator's request.</p>
+              <div class="grid grid-cols-2 gap-8 pt-6 text-xs">
+                <div><div class="border-b border-black h-7"></div><div>Witness 1 Signature</div></div>
+                <div><div class="border-b border-black h-7"></div><div>Witness 2 Signature</div></div>
+              </div>
+              <div class="pt-6 text-xs">Sworn to before me this ____ day of ____________, 20____.<div class="border-b border-black w-64 h-8 mt-2"></div><div>Notary Public, State of New York</div></div>
+            </div>
+          </section>
+        `);
+      }
+
+      // 6. Attorney Visit Prep Packet
+      if (include('attorney-packet')) {
+        sections.push(`
+          <section class="space-y-4 text-black ${sections.length > 0 ? 'print-page-break' : ''}">
+            ${draftBanner}
+            <div class="border-b-2 border-black pb-3 flex justify-between items-end">
+              <div>
+                <div class="text-xs font-mono uppercase font-bold">NY Estate Planning Attorney Consultation Memorandum</div>
+                <h1 class="text-lg font-bold">Client Intake &amp; Asset Disclosure Summary</h1>
+              </div>
+              <div class="text-xs text-right">
+                <div><strong>Client:</strong> ${clientName} ${p.dob ? '(DOB: ' + escapeHtml(p.dob) + ')' : ''}</div>
+                <div>${fullAddress} (${county} County)</div>
+                <div><strong>Spouse:</strong> ${spouseName} ${p.marriageDate ? '• Married: ' + escapeHtml(p.marriageDate) : ''}</div>
+              </div>
+            </div>
+            <div class="text-xs"><strong>Children (100% Intended Beneficiaries):</strong> ${escapeHtml(childrenNames)}</div>
+            <div class="grid grid-cols-2 gap-4 text-xs">
+              <div class="border border-slate-400">
+                <div class="bg-slate-100 px-2.5 py-1.5 font-bold flex justify-between border-b border-slate-400"><span>Schedule A: Client Accounts</span><span>${formatCurrency(userTotal)}</span></div>
+                <table class="w-full"><tbody class="divide-y divide-slate-200">
+                  ${state.accounts.length === 0 ? '<tr><td class="p-2 italic">No accounts entered.</td></tr>' : state.accounts.map(a => `<tr><td class="p-1.5">${escapeHtml(a.nickname)} (${escapeHtml(a.transferMechanism)})</td><td class="p-1.5 text-right font-mono">${formatCurrency(a.balance)}</td></tr>`).join('')}
+                </tbody></table>
+              </div>
+              <div class="border border-slate-400">
+                <div class="bg-slate-100 px-2.5 py-1.5 font-bold flex justify-between border-b border-slate-400"><span>Schedule B: Spouse Accounts</span><span>${formatCurrency(spouseTotal)}</span></div>
+                <table class="w-full"><tbody class="divide-y divide-slate-200">
+                  ${prep.spouseAccounts.length === 0 ? '<tr><td class="p-2 italic">No separate spouse accounts disclosed yet.</td></tr>' : prep.spouseAccounts.map(s => `<tr><td class="p-1.5">${escapeHtml(s.institution)}</td><td class="p-1.5 text-right font-mono">${formatCurrency(s.balance)}</td></tr>`).join('')}
+                </tbody></table>
+              </div>
+            </div>
+            <div class="text-xs space-y-1.5 border border-slate-400 p-3">
+              <div><strong>Requested Instruments:</strong> Mutual Waiver (EPTL § 5-1.1-A, § 5-3.1, SCPA § 1001) • 2021 NY Statutory POA (GOL § 5-1513) • Health Care Proxy (PHL § 2981) • Living Will &amp; HIPAA Release • Disposition of Remains (PHL § 4201) • Revocable Living Trust vs. Attorney-Supervised Will Review.</div>
+              <div><strong>Medicaid &amp; Real Estate:</strong> ${(prep.discussMedicaidSpousalRefusal ?? true) ? 'Review NY Medicaid Spousal Refusal (county right-to-sue), 5-yr MAPT, LTC Insurance.' : ''} ${prep.ownsNyRealEstate ? 'NY Real Estate Strategy: ' + escapeHtml(prep.realEstatePlanOption || '') : 'No sole-name NY real estate reported.'}</div>
+              <div><strong>Letter of Instruction Storage:</strong> Originals: ${escapeHtml(prep.originalDocumentsLocation || '[Specify home fireproof safe]')} • Password Key: ${escapeHtml(prep.passwordManagerLocation || '[Specify offline location]')}</div>
+            </div>
+          </section>
+        `);
+      }
+
+      // 7. Execution Guardrails Cheat Sheet
+      if (include('checklist')) {
+        sections.push(`
+          <section class="space-y-4 text-black ${sections.length > 0 ? 'print-page-break' : ''}">
+            <div class="border-b-2 border-black pb-3">
+              <div class="text-xs font-mono uppercase font-bold">New York Signing-Day Reference Sheet</div>
+              <h1 class="text-lg font-bold">NY Estate Execution Guardrails Cheat Sheet</h1>
+            </div>
+            <div class="space-y-2.5 text-xs">
+              <div class="p-3 border border-slate-400 rounded"><strong>☐ 1. Mutual Spousal Waiver (EPTL § 5-1.1-A(e) &amp; § 5-3.1):</strong> Must be in writing, signed by both spouses, and formally acknowledged in NY real-estate deed form (RPL § 309-a). Attach Schedules A &amp; B financial disclosures.</div>
+              <div class="p-3 border border-slate-400 rounded"><strong>☐ 2. NY Statutory Power of Attorney (GOL § 5-1513 &amp; § 5-1501B):</strong> Exact statutory wording &amp; 12-pt font in "Caution to the Principal." Requires Notary acknowledgment + 2 disinterested witnesses (the Notary may serve as 1 of the 2 witnesses; never an Agent or gift recipient).</div>
+              <div class="p-3 border border-slate-400 rounded"><strong>☐ 3. NY Health Care Proxy (PHL § 2981) &amp; Living Will:</strong> Requires 2 adult witnesses (who are NOT named as Health Care Agents). No notary required.</div>
+              <div class="p-3 border border-slate-400 rounded"><strong>☐ 4. Disposition of Remains (PHL § 4201):</strong> Signed before 2 adult witnesses; named Agent(s) must also sign the Acceptance section.</div>
+              <div class="p-3 border border-slate-400 rounded"><strong>☐ 5. Backup Will (EPTL § 3-2.1) &amp; Self-Proving Affidavit (SCPA § 1406):</strong> Printed cleanly with zero handwritten edits, signed at physical end before 2 disinterested adult witnesses (never spouse, child, beneficiary, or Executor) who write their residential addresses, plus notarized SCPA § 1406 affidavit. <strong>NEVER remove the staple after signing!</strong></div>
+              <div class="p-3 border border-slate-400 rounded"><strong>☐ 6. NY Transfer on Death Deed (RPL § 424 — If Real Estate Owned):</strong> Must be signed before 2 witnesses + Notary AND <strong>recorded in the county clerk's office BEFORE death</strong> (otherwise void).</div>
+              <div class="p-3 border border-slate-400 rounded"><strong>☐ 7. Custodian Beneficiary Audit &amp; Safe Storage:</strong> Verify written/PDF confirmations of TOD, POD, and IRA <em>per stirpes</em> designations with each institution. Store wet-ink originals in a home fireproof safe (never a sole-name bank safe deposit box).</div>
+            </div>
+          </section>
+        `);
+      }
+
+      return sections.join('\n');
+    }
+
     function render() {
       // Preserve active input focus & cursor position so typing never loses focus
       const prevEl = document.activeElement;
@@ -4018,9 +4404,12 @@
             ✓ ${escapeHtml(toastMessage)}
           </div>
         ` : ''}
-        <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <main id="main-screen-content" class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
           ${tabContent}
         </main>
+        <div id="print-binder-root" class="print-container">
+          ${renderPrintBinderRoot()}
+        </div>
         <footer class="bg-[#0F172A] text-slate-300 border-t border-slate-800 py-3 px-4 no-print mt-auto">
           <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
             <div>
