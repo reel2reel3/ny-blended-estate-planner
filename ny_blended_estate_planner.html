@@ -597,6 +597,9 @@
     }
 
     const ACTIVE_PLAN_NAME_KEY = 'ny_blended_estate_active_plan_name_v1';
+    const VAULT_KEY = 'ny_blended_estate_vault_v1';
+    const VAULT_PBKDF2_ITERATIONS = 600000;
+
     function loadActivePlanName() {
       try {
         const saved = localStorage.getItem(ACTIVE_PLAN_NAME_KEY);
@@ -605,9 +608,182 @@
       return 'Robert J. Vance - Baseline Plan';
     }
 
-    let state = loadState();
-    let savedPlans = loadSavedPlans();
-    let activePlanName = loadActivePlanName();
+    // --- AES-256-GCM Client-Side Passphrase Vault (Web Crypto API) ---
+    function isWebCryptoAvailable() {
+      return Boolean(window.crypto && window.crypto.subtle && typeof TextEncoder !== 'undefined');
+    }
+
+    function bytesToBase64(bytes) {
+      let binary = '';
+      const chunkSize = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+      }
+      return btoa(binary);
+    }
+
+    function base64ToBytes(b64) {
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes;
+    }
+
+    async function deriveAesKeyFromPassphrase(passphrase, saltBytes, iterations = VAULT_PBKDF2_ITERATIONS) {
+      const enc = new TextEncoder();
+      const keyMaterial = await window.crypto.subtle.importKey(
+        'raw',
+        enc.encode(passphrase),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveKey']
+      );
+      return window.crypto.subtle.deriveKey(
+        {
+          name: 'PBKDF2',
+          salt: saltBytes,
+          iterations: iterations,
+          hash: 'SHA-256'
+        },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+      );
+    }
+
+    async function encryptPayloadWithKey(payloadObj, cryptoKey, saltBase64, iterations = VAULT_PBKDF2_ITERATIONS, extraMeta = {}) {
+      const iv = window.crypto.getRandomValues(new Uint8Array(12));
+      const encoded = new TextEncoder().encode(JSON.stringify(payloadObj));
+      const cipherBuf = await window.crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: iv },
+        cryptoKey,
+        encoded
+      );
+      return Object.assign({
+        appName: 'NY Blended Estate Planner',
+        encrypted: true,
+        version: 1,
+        alg: 'AES-256-GCM',
+        kdf: 'PBKDF2-SHA256',
+        iterations: iterations,
+        salt: saltBase64,
+        iv: bytesToBase64(iv),
+        ciphertext: bytesToBase64(new Uint8Array(cipherBuf)),
+        updatedAt: new Date().toISOString()
+      }, extraMeta);
+    }
+
+    async function encryptPayloadWithPassphrase(payloadObj, passphrase, extraMeta = {}) {
+      const salt = window.crypto.getRandomValues(new Uint8Array(16));
+      const saltBase64 = bytesToBase64(salt);
+      const key = await deriveAesKeyFromPassphrase(passphrase, salt, VAULT_PBKDF2_ITERATIONS);
+      const envelope = await encryptPayloadWithKey(payloadObj, key, saltBase64, VAULT_PBKDF2_ITERATIONS, extraMeta);
+      return { envelope, key, saltBase64 };
+    }
+
+    async function decryptEnvelopeWithPassphrase(envelope, passphrase) {
+      const saltBytes = base64ToBytes(envelope.salt);
+      const ivBytes = base64ToBytes(envelope.iv);
+      const cipherBytes = base64ToBytes(envelope.ciphertext);
+      const iterations = Number(envelope.iterations) || VAULT_PBKDF2_ITERATIONS;
+      const key = await deriveAesKeyFromPassphrase(passphrase, saltBytes, iterations);
+      const plainBuf = await window.crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: ivBytes },
+        key,
+        cipherBytes
+      );
+      const jsonStr = new TextDecoder().decode(plainBuf);
+      return { data: JSON.parse(jsonStr), key, saltBase64: envelope.salt, iterations };
+    }
+
+    function readVaultEnvelope() {
+      try {
+        const raw = localStorage.getItem(VAULT_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.encrypted === true && parsed.ciphertext && parsed.salt && parsed.iv) {
+          return parsed;
+        }
+      } catch (e) {
+        console.warn('Could not read vault envelope:', e);
+      }
+      return null;
+    }
+
+    function clearPlaintextLocalStorage() {
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(SAVED_PLANS_KEY);
+        localStorage.removeItem(ACTIVE_PLAN_NAME_KEY);
+      } catch (e) {}
+    }
+
+    const initialVaultEnvelope = readVaultEnvelope();
+    let vaultEnabled = Boolean(initialVaultEnvelope);
+    let isVaultLocked = Boolean(initialVaultEnvelope);
+    let vaultCryptoKey = null; // RAM-only CryptoKey; never stored on disk
+    let vaultSaltBase64 = initialVaultEnvelope ? initialVaultEnvelope.salt : null;
+    let vaultIterations = initialVaultEnvelope ? (Number(initialVaultEnvelope.iterations) || VAULT_PBKDF2_ITERATIONS) : VAULT_PBKDF2_ITERATIONS;
+    let vaultAutoLockMinutes = initialVaultEnvelope && typeof initialVaultEnvelope.autoLockMinutes === 'number'
+      ? initialVaultEnvelope.autoLockMinutes
+      : 15;
+    let vaultLockReason = '';
+    let vaultUnlockError = '';
+    let vaultUnlockBusy = false;
+    let vaultShowPassphrase = false;
+    let vaultShowResetConfirm = false;
+
+    let isVaultModalOpen = false;
+    let vaultModalError = '';
+    let vaultModalBusy = false;
+    let vaultModalMode = 'setup'; // 'setup' | 'manage' | 'change'
+
+    // Encrypted backup modal / state
+    let saveAsEncryptBackup = false;
+    let saveAsCustomPassphrase = '';
+    let pendingEncryptedImport = null; // { fileName, envelope }
+    let decryptImportError = '';
+    let decryptImportBusy = false;
+
+    let vaultWriteChain = Promise.resolve();
+    let vaultIdleTimer = null;
+    let lastActivityTick = Date.now();
+
+    function resetVaultIdleTimer() {
+      if (vaultIdleTimer) {
+        clearTimeout(vaultIdleTimer);
+        vaultIdleTimer = null;
+      }
+      if (!vaultEnabled || isVaultLocked || !vaultAutoLockMinutes || vaultAutoLockMinutes <= 0) {
+        return;
+      }
+      vaultIdleTimer = setTimeout(() => {
+        if (vaultEnabled && !isVaultLocked) {
+          window.lockVault(`Auto-locked after ${vaultAutoLockMinutes} minutes of inactivity.`);
+        }
+      }, vaultAutoLockMinutes * 60 * 1000);
+    }
+
+    function handleVaultActivity() {
+      if (!vaultEnabled || isVaultLocked) return;
+      const now = Date.now();
+      if (now - lastActivityTick > 10000) {
+        lastActivityTick = now;
+        resetVaultIdleTimer();
+      }
+    }
+
+    ['mousedown', 'keydown', 'touchstart', 'scroll'].forEach(evt => {
+      document.addEventListener(evt, handleVaultActivity, { passive: true });
+    });
+
+    // If vault is locked on boot, keep only a blank placeholder in RAM until unlocked
+    let state = isVaultLocked ? getBlankState() : loadState();
+    let savedPlans = isVaultLocked ? [] : loadSavedPlans();
+    let activePlanName = isVaultLocked ? 'Locked Vault' : loadActivePlanName();
     let isPlanModalOpen = false;
     let planModalMode = 'open'; // 'open' | 'save'
     let planNameInput = activePlanName;
@@ -753,8 +929,43 @@
       balance: 100000
     };
 
+    function persistVaultEncryptedSnapshot() {
+      if (!vaultEnabled || isVaultLocked || !vaultCryptoKey || !vaultSaltBase64) return Promise.resolve();
+      const payloadSnapshot = {
+        activeState: JSON.parse(JSON.stringify(state)),
+        allSavedPlans: JSON.parse(JSON.stringify(savedPlans)),
+        activePlanName: activePlanName || ''
+      };
+      const keyRef = vaultCryptoKey;
+      const saltRef = vaultSaltBase64;
+      const iterRef = vaultIterations;
+      const autoLockRef = vaultAutoLockMinutes;
+
+      vaultWriteChain = vaultWriteChain.then(async () => {
+        try {
+          const envelope = await encryptPayloadWithKey(
+            payloadSnapshot,
+            keyRef,
+            saltRef,
+            iterRef,
+            { autoLockMinutes: autoLockRef }
+          );
+          localStorage.setItem(VAULT_KEY, JSON.stringify(envelope));
+          clearPlaintextLocalStorage();
+        } catch (e) {
+          console.warn('Could not save encrypted vault:', e);
+        }
+      });
+      return vaultWriteChain;
+    }
+
     function saveState() {
+      if (isVaultLocked) return;
       state.lastUpdated = new Date().toISOString();
+      if (vaultEnabled && vaultCryptoKey) {
+        persistVaultEncryptedSnapshot();
+        return;
+      }
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         localStorage.setItem(SAVED_PLANS_KEY, JSON.stringify(savedPlans));
@@ -763,6 +974,339 @@
         console.warn('Could not save state to localStorage:', e);
       }
     }
+
+    // --- Vault Lock / Unlock / Settings Handlers ---
+    window.toggleVaultShowPassphrase = function() {
+      vaultShowPassphrase = !vaultShowPassphrase;
+      render();
+    };
+
+    window.toggleVaultResetConfirm = function(show) {
+      vaultShowResetConfirm = Boolean(show);
+      render();
+    };
+
+    window.lockVault = function(reason) {
+      if (!vaultEnabled) return;
+      if (vaultIdleTimer) {
+        clearTimeout(vaultIdleTimer);
+        vaultIdleTimer = null;
+      }
+      // Flush any pending encrypted write before wiping RAM
+      const pending = vaultWriteChain;
+      vaultCryptoKey = null;
+      isVaultLocked = true;
+      isVaultModalOpen = false;
+      isPlanModalOpen = false;
+      isNewPlanModalOpen = false;
+      isSaveAsModalOpen = false;
+      isPrintMenuOpen = false;
+      pendingEncryptedImport = null;
+      vaultUnlockError = '';
+      vaultShowPassphrase = false;
+      vaultShowResetConfirm = false;
+      vaultLockReason = typeof reason === 'string' ? reason : 'Vault locked. Enter your passphrase to resume.';
+
+      // Wipe sensitive data from RAM while locked
+      pending.finally(() => {
+        if (isVaultLocked) {
+          state = getBlankState();
+          savedPlans = [];
+          activePlanName = 'Locked Vault';
+          render();
+          setTimeout(() => {
+            const el = document.getElementById('vault-unlock-input');
+            if (el) el.focus();
+          }, 50);
+        }
+      });
+      render();
+    };
+
+    window.submitUnlockVault = async function(e) {
+      if (e) e.preventDefault();
+      if (vaultUnlockBusy) return;
+      const inputEl = document.getElementById('vault-unlock-input');
+      const passphrase = inputEl ? inputEl.value : '';
+      if (!passphrase) {
+        vaultUnlockError = 'Please enter your passphrase.';
+        render();
+        return;
+      }
+      if (!isWebCryptoAvailable()) {
+        vaultUnlockError = 'Browser Web Crypto API is unavailable in this context. Please open the file directly in Chrome, Edge, Firefox, or Safari.';
+        render();
+        return;
+      }
+      const envelope = readVaultEnvelope();
+      if (!envelope) {
+        vaultEnabled = false;
+        isVaultLocked = false;
+        state = loadState();
+        savedPlans = loadSavedPlans();
+        activePlanName = loadActivePlanName();
+        render();
+        return;
+      }
+
+      vaultUnlockBusy = true;
+      vaultUnlockError = '';
+      render();
+
+      try {
+        const res = await decryptEnvelopeWithPassphrase(envelope, passphrase);
+        const data = res.data || {};
+        state = (data.activeState && Array.isArray(data.activeState.accounts)) ? data.activeState : getDefaultState();
+        savedPlans = Array.isArray(data.allSavedPlans) ? data.allSavedPlans : [];
+        activePlanName = (data.activePlanName && String(data.activePlanName).trim()) ? data.activePlanName : 'My Estate Plan';
+        vaultCryptoKey = res.key;
+        vaultSaltBase64 = res.saltBase64;
+        vaultIterations = res.iterations;
+        vaultAutoLockMinutes = typeof envelope.autoLockMinutes === 'number' ? envelope.autoLockMinutes : 15;
+        isVaultLocked = false;
+        vaultUnlockBusy = false;
+        vaultUnlockError = '';
+        vaultLockReason = '';
+        vaultShowPassphrase = false;
+        resetVaultIdleTimer();
+        render();
+        showToast('Vault unlocked (AES-256-GCM).');
+      } catch (err) {
+        vaultUnlockBusy = false;
+        vaultUnlockError = 'Incorrect passphrase. Please try again.';
+        render();
+        setTimeout(() => {
+          const el = document.getElementById('vault-unlock-input');
+          if (el) {
+            el.focus();
+            el.select();
+          }
+        }, 40);
+      }
+    };
+
+    window.wipeLockedVault = function() {
+      try {
+        localStorage.removeItem(VAULT_KEY);
+      } catch (e) {}
+      clearPlaintextLocalStorage();
+      vaultEnabled = false;
+      isVaultLocked = false;
+      vaultCryptoKey = null;
+      vaultSaltBase64 = null;
+      vaultUnlockError = '';
+      vaultLockReason = '';
+      vaultShowResetConfirm = false;
+      state = getBlankState();
+      savedPlans = [];
+      activePlanName = 'New Estate Plan';
+      saveState();
+      render();
+      showToast('Local vault erased. Started a fresh blank plan.');
+    };
+
+    window.openVaultModal = function(mode) {
+      vaultModalMode = mode || (vaultEnabled ? 'manage' : 'setup');
+      vaultModalError = '';
+      vaultModalBusy = false;
+      isVaultModalOpen = true;
+      render();
+      setTimeout(() => {
+        const el = document.getElementById('vault-new-passphrase');
+        if (el) el.focus();
+      }, 50);
+    };
+
+    window.closeVaultModal = function() {
+      isVaultModalOpen = false;
+      vaultModalError = '';
+      vaultModalBusy = false;
+      render();
+    };
+
+    window.setVaultModalMode = function(mode) {
+      vaultModalMode = mode;
+      vaultModalError = '';
+      render();
+    };
+
+    window.submitEnableOrChangeVault = async function(e) {
+      if (e) e.preventDefault();
+      if (vaultModalBusy) return;
+      if (!isWebCryptoAvailable()) {
+        vaultModalError = 'Web Crypto API is not available in this browser context. Open the downloaded HTML file in Chrome, Edge, Firefox, or Safari.';
+        render();
+        return;
+      }
+      const p1 = (document.getElementById('vault-new-passphrase')?.value || '');
+      const p2 = (document.getElementById('vault-confirm-passphrase')?.value || '');
+      const autoSel = document.getElementById('vault-autolock-select');
+      const selectedMinutes = autoSel ? Number(autoSel.value) : vaultAutoLockMinutes;
+
+      if (p1.length < 8) {
+        vaultModalError = 'Please choose a passphrase of at least 8 characters (a 3–4 word passphrase is ideal).';
+        render();
+        return;
+      }
+      if (p1 !== p2) {
+        vaultModalError = 'Passphrases do not match. Please re-enter both fields.';
+        render();
+        return;
+      }
+
+      vaultModalBusy = true;
+      vaultModalError = '';
+      render();
+
+      try {
+        const payload = {
+          activeState: JSON.parse(JSON.stringify(state)),
+          allSavedPlans: JSON.parse(JSON.stringify(savedPlans)),
+          activePlanName: activePlanName || ''
+        };
+        const { envelope, key, saltBase64 } = await encryptPayloadWithPassphrase(payload, p1, {
+          autoLockMinutes: selectedMinutes
+        });
+        localStorage.setItem(VAULT_KEY, JSON.stringify(envelope));
+        clearPlaintextLocalStorage();
+
+        vaultEnabled = true;
+        isVaultLocked = false;
+        vaultCryptoKey = key;
+        vaultSaltBase64 = saltBase64;
+        vaultIterations = VAULT_PBKDF2_ITERATIONS;
+        vaultAutoLockMinutes = selectedMinutes;
+        vaultModalBusy = false;
+        isVaultModalOpen = false;
+        resetVaultIdleTimer();
+        render();
+        showToast(vaultModalMode === 'change'
+          ? 'Vault passphrase updated & re-encrypted (AES-256-GCM).'
+          : 'Passphrase Lock enabled! Local storage is now AES-256-GCM encrypted.');
+      } catch (err) {
+        console.error('Vault encryption error:', err);
+        vaultModalBusy = false;
+        vaultModalError = 'Could not encrypt local vault: ' + (err && err.message ? err.message : 'Unknown error');
+        render();
+      }
+    };
+
+    window.updateVaultAutoLockSetting = function(minutes) {
+      vaultAutoLockMinutes = Number(minutes) || 0;
+      resetVaultIdleTimer();
+      saveState();
+      render();
+      showToast(vaultAutoLockMinutes > 0
+        ? `Auto-lock timer set to ${vaultAutoLockMinutes} minutes.`
+        : 'Idle auto-lock disabled (still locks when tab closes).');
+    };
+
+    window.disableVaultPassphrase = function() {
+      if (!vaultEnabled || isVaultLocked) return;
+      try {
+        localStorage.removeItem(VAULT_KEY);
+      } catch (e) {}
+      vaultEnabled = false;
+      vaultCryptoKey = null;
+      vaultSaltBase64 = null;
+      if (vaultIdleTimer) {
+        clearTimeout(vaultIdleTimer);
+        vaultIdleTimer = null;
+      }
+      isVaultModalOpen = false;
+      saveState();
+      render();
+      showToast('Passphrase Lock turned off. Data saved in standard localStorage.');
+    };
+
+    // --- Backup File Import (Plain JSON + AES-256 Encrypted JSON) ---
+    window.triggerImportBackup = function() {
+      const input = document.getElementById('backup-file-input');
+      if (input) {
+        input.value = '';
+        input.click();
+      }
+    };
+
+    function applyImportedBundle(parsed, fileName) {
+      if (parsed && parsed.activeState && Array.isArray(parsed.activeState.accounts)) {
+        state = parsed.activeState;
+        if (Array.isArray(parsed.allSavedPlans) && parsed.allSavedPlans.length > 0) {
+          savedPlans = parsed.allSavedPlans;
+        }
+        if (parsed.activePlanName) {
+          activePlanName = parsed.activePlanName;
+        }
+      } else if (parsed && Array.isArray(parsed.accounts) && parsed.will) {
+        state = parsed;
+        activePlanName = (fileName || 'Imported Plan').replace(/\.json$/i, '');
+      } else {
+        throw new Error('Unrecognized estate planner backup file format.');
+      }
+      editingAccountId = null;
+      saveState();
+      render();
+      showToast(`Imported estate plan from "${fileName}".`);
+    }
+
+    window.handleImportFile = function(event) {
+      const file = event && event.target && event.target.files ? event.target.files[0] : null;
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const parsed = JSON.parse(String(e.target.result || ''));
+          if (parsed && parsed.encrypted === true && parsed.ciphertext && parsed.salt && parsed.iv) {
+            pendingEncryptedImport = { fileName: file.name, envelope: parsed };
+            decryptImportError = '';
+            decryptImportBusy = false;
+            render();
+            setTimeout(() => {
+              const el = document.getElementById('decrypt-import-passphrase');
+              if (el) el.focus();
+            }, 50);
+            return;
+          }
+          applyImportedBundle(parsed, file.name);
+        } catch (err) {
+          showToast('Could not import file: ' + (err && err.message ? err.message : 'Invalid JSON'));
+        }
+      };
+      reader.readAsText(file);
+    };
+
+    window.closeDecryptImportModal = function() {
+      pendingEncryptedImport = null;
+      decryptImportError = '';
+      decryptImportBusy = false;
+      render();
+    };
+
+    window.submitDecryptImport = async function(e) {
+      if (e) e.preventDefault();
+      if (!pendingEncryptedImport || decryptImportBusy) return;
+      const passphrase = document.getElementById('decrypt-import-passphrase')?.value || '';
+      if (!passphrase) {
+        decryptImportError = 'Please enter the backup passphrase.';
+        render();
+        return;
+      }
+      decryptImportBusy = true;
+      decryptImportError = '';
+      render();
+
+      try {
+        const res = await decryptEnvelopeWithPassphrase(pendingEncryptedImport.envelope, passphrase);
+        const fileName = pendingEncryptedImport.fileName;
+        pendingEncryptedImport = null;
+        decryptImportBusy = false;
+        applyImportedBundle(res.data, fileName);
+      } catch (err) {
+        decryptImportBusy = false;
+        decryptImportError = 'Incorrect passphrase or corrupted backup file.';
+        render();
+      }
+    };
 
     function showToast(msg) {
       toastMessage = msg;
@@ -939,7 +1483,10 @@
     window.openSaveAsModal = function() {
       isSaveAsModalOpen = true;
       const safe = (activePlanName || 'estate-plan').toLowerCase().replace(/[^a-z0-9]/g, '-');
-      saveAsFileNameInput = `ny-estate-plan-${safe}-${new Date().toISOString().slice(0, 10)}.json`;
+      saveAsEncryptBackup = Boolean(vaultEnabled);
+      saveAsCustomPassphrase = '';
+      const suffix = saveAsEncryptBackup ? '.encrypted.json' : '.json';
+      saveAsFileNameInput = `ny-estate-plan-${safe}-${new Date().toISOString().slice(0, 10)}${suffix}`;
       render();
       setTimeout(() => {
         const el = document.getElementById('save-as-filename-input');
@@ -949,12 +1496,53 @@
 
     window.closeSaveAsModal = function() {
       isSaveAsModalOpen = false;
+      saveAsCustomPassphrase = '';
       render();
     };
 
     window.updateSaveAsFileName = function(val) {
       saveAsFileNameInput = val;
     };
+
+    window.toggleSaveAsEncryptBackup = function(checked) {
+      saveAsEncryptBackup = Boolean(checked);
+      if (saveAsEncryptBackup && saveAsFileNameInput.endsWith('.json') && !saveAsFileNameInput.endsWith('.encrypted.json')) {
+        saveAsFileNameInput = saveAsFileNameInput.replace(/\.json$/i, '.encrypted.json');
+      } else if (!saveAsEncryptBackup && saveAsFileNameInput.endsWith('.encrypted.json')) {
+        saveAsFileNameInput = saveAsFileNameInput.replace(/\.encrypted\.json$/i, '.json');
+      }
+      render();
+    };
+
+    window.updateSaveAsCustomPassphrase = function(val) {
+      saveAsCustomPassphrase = val;
+    };
+
+    async function getExportBackupStringAsync() {
+      const bundleObj = JSON.parse(getBackupJsonString());
+      if (!saveAsEncryptBackup) {
+        return JSON.stringify(bundleObj, null, 2);
+      }
+      if (!isWebCryptoAvailable()) {
+        throw new Error('Browser Web Crypto API is unavailable for encryption.');
+      }
+      if (saveAsCustomPassphrase && saveAsCustomPassphrase.length > 0) {
+        if (saveAsCustomPassphrase.length < 8) {
+          throw new Error('Backup passphrase must be at least 8 characters.');
+        }
+        const { envelope } = await encryptPayloadWithPassphrase(bundleObj, saveAsCustomPassphrase, {
+          exportDate: new Date().toISOString()
+        });
+        return JSON.stringify(envelope, null, 2);
+      }
+      if (vaultEnabled && vaultCryptoKey && vaultSaltBase64) {
+        const envelope = await encryptPayloadWithKey(bundleObj, vaultCryptoKey, vaultSaltBase64, vaultIterations, {
+          exportDate: new Date().toISOString()
+        });
+        return JSON.stringify(envelope, null, 2);
+      }
+      throw new Error('Please enter a passphrase (min 8 chars) to encrypt this backup file, or uncheck Encrypt Backup.');
+    }
 
     window.openInNewWindow = function() {
       try {
@@ -967,7 +1555,13 @@
     // 1. Select Folder on Computer Hard Drive (Directory Picker with clean fallback)
     window.saveToPickedDirectory = async function() {
       const fileName = (saveAsFileNameInput || 'estate-plan.json').trim();
-      const dataStr = getBackupJsonString();
+      let dataStr;
+      try {
+        dataStr = await getExportBackupStringAsync();
+      } catch (err) {
+        showToast(err.message || 'Could not prepare backup.');
+        return;
+      }
 
       if ('showDirectoryPicker' in window) {
         try {
@@ -986,14 +1580,19 @@
       }
 
       // Graceful fallback: trigger download so user gets file immediately
-      window.downloadBackupFile();
-      showToast(`Saved "${fileName}" to your computer. (Direct folder access was restricted by your browser).`);
+      await window.downloadBackupFile();
     };
 
     // 2. Select Location & File via Save-As Dialog (File Picker with clean fallback)
     window.saveWithSaveFilePicker = async function() {
       const fileName = (saveAsFileNameInput || 'estate-plan.json').trim();
-      const dataStr = getBackupJsonString();
+      let dataStr;
+      try {
+        dataStr = await getExportBackupStringAsync();
+      } catch (err) {
+        showToast(err.message || 'Could not prepare backup.');
+        return;
+      }
 
       if ('showSaveFilePicker' in window) {
         try {
@@ -1018,13 +1617,19 @@
         }
       }
 
-      window.downloadBackupFile();
+      await window.downloadBackupFile();
     };
 
     // 3. Direct Browser Download
-    window.downloadBackupFile = function() {
+    window.downloadBackupFile = async function() {
       const fileName = (saveAsFileNameInput || 'estate-plan.json').trim();
-      const dataStr = getBackupJsonString();
+      let dataStr;
+      try {
+        dataStr = await getExportBackupStringAsync();
+      } catch (err) {
+        showToast(err.message || 'Could not prepare backup.');
+        return;
+      }
       const blob = new Blob([dataStr], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -1035,15 +1640,23 @@
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       window.closeSaveAsModal();
-      showToast(`Saved "${fileName}" to your computer.`);
+      showToast(saveAsEncryptBackup
+        ? `Saved AES-256 encrypted backup "${fileName}".`
+        : `Saved "${fileName}" to your computer.`);
     };
 
     // 4. Copy JSON to Clipboard
     window.copyBackupJsonToClipboard = async function() {
-      const dataStr = getBackupJsonString();
+      let dataStr;
+      try {
+        dataStr = await getExportBackupStringAsync();
+      } catch (err) {
+        showToast(err.message || 'Could not prepare backup.');
+        return;
+      }
       try {
         await navigator.clipboard.writeText(dataStr);
-        showToast('Copied full estate plan data to clipboard!');
+        showToast(saveAsEncryptBackup ? 'Copied AES-256 encrypted backup to clipboard!' : 'Copied full estate plan data to clipboard!');
       } catch (e) {
         // Fallback for clipboard
         const ta = document.createElement('textarea');
@@ -1052,7 +1665,7 @@
         ta.select();
         document.execCommand('copy');
         document.body.removeChild(ta);
-        showToast('Copied full estate plan data to clipboard!');
+        showToast(saveAsEncryptBackup ? 'Copied AES-256 encrypted backup to clipboard!' : 'Copied full estate plan data to clipboard!');
       }
     };
 
@@ -1421,8 +2034,8 @@
                 <div>
                   <div class="flex flex-wrap items-center gap-2">
                     <h1 class="text-lg sm:text-xl font-bold tracking-tight text-white">NY Blended Estate Planner</h1>
-                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-950 text-emerald-300 border border-emerald-700/60">
-                      100% Client-Side LocalStorage
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${vaultEnabled ? 'bg-emerald-900/90 text-emerald-200 border border-emerald-500/60' : 'bg-emerald-950 text-emerald-300 border border-emerald-700/60'}">
+                      ${vaultEnabled ? '🔒 AES-256 Encrypted Vault' : '100% Client-Side LocalStorage'}
                     </span>
                     <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-mono bg-sky-950 text-sky-200 border border-sky-800">
                       Active: <strong>${escapeHtml(activePlanName)}</strong>
@@ -1434,8 +2047,39 @@
                 </div>
               </div>
 
-              <!-- Top Toolbar: Print/PDF Dropdown + New Plan + Save As + Save Plan + Open Plan + Import + Reset -->
+              <!-- Top Toolbar: Vault Lock + Print/PDF Dropdown + New Plan + Save As + Save Plan + Open Plan + Import + Reset -->
               <div class="flex flex-wrap items-center gap-2">
+                ${vaultEnabled ? `
+                  <button
+                    id="btn-lock-vault-now"
+                    type="button"
+                    onclick="lockVault()"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-colors cursor-pointer ring-1 ring-emerald-400/50"
+                    title="Immediately lock your estate plan and wipe data from memory"
+                  >
+                    🔒 Lock Now
+                  </button>
+                  <button
+                    id="btn-vault-settings"
+                    type="button"
+                    onclick="openVaultModal('manage')"
+                    class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-700/60 transition-colors cursor-pointer"
+                    title="Manage Passphrase Lock, auto-lock timer, or change passphrase"
+                  >
+                    🛡️ Vault
+                  </button>
+                ` : `
+                  <button
+                    id="btn-enable-vault"
+                    type="button"
+                    onclick="openVaultModal('setup')"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/50 transition-colors cursor-pointer"
+                    title="Encrypt local storage with an AES-256-GCM passphrase for travel & laptop security"
+                  >
+                    🔓 Passphrase Lock
+                  </button>
+                `}
+
                 <!-- Print / Export to PDF Dropdown -->
                 <div id="print-export-dropdown-wrapper" class="relative">
                   <button
@@ -1896,16 +2540,54 @@
                 />
               </div>
 
+              <!-- AES-256-GCM Encrypted Backup Toggle -->
+              <div class="p-3.5 rounded-xl border ${saveAsEncryptBackup ? 'border-emerald-400 bg-emerald-50/70' : 'border-slate-200 bg-slate-50'} space-y-2.5">
+                <label class="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    id="save-as-encrypt-checkbox"
+                    type="checkbox"
+                    ${saveAsEncryptBackup ? 'checked' : ''}
+                    onchange="toggleSaveAsEncryptBackup(this.checked)"
+                    class="mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <div>
+                    <div class="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <span>🔒 Encrypt Backup File (AES-256-GCM)</span>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">Safe for Cloud / Travel</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 mt-0.5">
+                      ${vaultEnabled
+                        ? 'Uses your active Vault passphrase by default (or enter a separate backup passphrase below).'
+                        : 'Encrypts the exported file with a passphrase so it is unreadable without it.'}
+                    </p>
+                  </div>
+                </label>
+                ${saveAsEncryptBackup ? `
+                  <div>
+                    <input
+                      id="save-as-custom-passphrase"
+                      type="password"
+                      value="${escapeHtml(saveAsCustomPassphrase)}"
+                      oninput="updateSaveAsCustomPassphrase(this.value)"
+                      placeholder="${vaultEnabled ? 'Leave blank to use active Vault passphrase, or enter custom passphrase...' : 'Enter passphrase for this backup file (min 8 chars)...'}"
+                      class="w-full px-3 py-2 rounded-lg border border-emerald-300 bg-white text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+                ` : ''}
+              </div>
+
               <!-- Main Save Button -->
               <div class="p-4 rounded-xl border-2 border-emerald-500 bg-emerald-50/70 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
                 <div>
                   <div class="flex items-center gap-2">
-                    <span class="text-lg">💾</span>
-                    <h4 class="text-sm font-bold text-slate-900">Save Plan File to Computer</h4>
+                    <span class="text-lg">${saveAsEncryptBackup ? '🔒' : '💾'}</span>
+                    <h4 class="text-sm font-bold text-slate-900">${saveAsEncryptBackup ? 'Save Encrypted Plan File' : 'Save Plan File to Computer'}</h4>
                     <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-200 text-emerald-900">Recommended</span>
                   </div>
                   <p class="text-xs text-slate-600 mt-1 leading-relaxed">
-                    Downloads your complete client plan JSON file directly to your computer.
+                    ${saveAsEncryptBackup
+                      ? 'Downloads an AES-256-GCM encrypted backup file that requires your passphrase to re-import.'
+                      : 'Downloads your complete client plan JSON file directly to your computer.'}
                   </p>
                 </div>
                 <button
@@ -4357,12 +5039,339 @@
       return sections.join('\n');
     }
 
+    // --- Full-Screen Vault Lock Screen (Shown when AES-256 Vault is locked) ---
+    function renderVaultLockScreen() {
+      return `
+        <div class="min-h-screen bg-[#0F172A] text-white flex flex-col items-center justify-center p-4 sm:p-6">
+          <div class="w-full max-w-md bg-slate-900/90 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden">
+            <div class="p-6 sm:p-7 border-b border-slate-800 text-center space-y-2">
+              <div class="w-14 h-14 mx-auto rounded-2xl bg-emerald-500/15 border border-emerald-400/40 flex items-center justify-center text-2xl shadow-inner">
+                🔒
+              </div>
+              <h1 class="text-xl font-bold tracking-tight text-white">NY Blended Estate Planner</h1>
+              <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-emerald-950 text-emerald-300 border border-emerald-700/60">
+                AES-256-GCM Encrypted Local Vault
+              </div>
+              <p class="text-xs text-slate-300 pt-1 leading-relaxed">
+                ${vaultLockReason ? escapeHtml(vaultLockReason) : 'Your estate plan is encrypted in local browser storage. Enter your passphrase to unlock.'}
+              </p>
+            </div>
+
+            <form onsubmit="submitUnlockVault(event)" class="p-6 sm:p-7 space-y-4">
+              <div>
+                <label for="vault-unlock-input" class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                  Vault Passphrase
+                </label>
+                <div class="relative">
+                  <input
+                    id="vault-unlock-input"
+                    type="${vaultShowPassphrase ? 'text' : 'password'}"
+                    autocomplete="current-password"
+                    placeholder="Enter your passphrase..."
+                    ${vaultUnlockBusy ? 'disabled' : ''}
+                    class="w-full px-3.5 py-2.5 pr-16 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                  />
+                  <button
+                    type="button"
+                    onclick="toggleVaultShowPassphrase()"
+                    class="absolute right-2.5 top-1/2 -translate-y-1/2 px-2 py-1 text-[11px] font-semibold text-slate-400 hover:text-white cursor-pointer"
+                  >
+                    ${vaultShowPassphrase ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
+
+              ${vaultUnlockError ? `
+                <div class="p-3 rounded-lg bg-rose-950/80 border border-rose-700/70 text-xs text-rose-200 font-medium">
+                  ⚠️ ${escapeHtml(vaultUnlockError)}
+                </div>
+              ` : ''}
+
+              <button
+                type="submit"
+                ${vaultUnlockBusy ? 'disabled' : ''}
+                class="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-sm font-bold shadow-md transition-colors cursor-pointer"
+              >
+                ${vaultUnlockBusy ? 'Decrypting Vault...' : '🔓 Unlock Estate Planner'}
+              </button>
+
+              <div class="pt-2 border-t border-slate-800 space-y-2.5 text-[11px] text-slate-400">
+                <p class="leading-relaxed">
+                  🛡️ <strong>100% Offline Privacy:</strong> Decryption happens strictly in your browser using <code class="text-emerald-300">PBKDF2-SHA256</code> + <code class="text-emerald-300">AES-256-GCM</code>. Safe on airport &amp; hotel Wi-Fi.
+                </p>
+
+                ${!vaultShowResetConfirm ? `
+                  <div class="text-center pt-1">
+                    <button
+                      type="button"
+                      onclick="toggleVaultResetConfirm(true)"
+                      class="text-[11px] text-slate-500 hover:text-rose-300 underline cursor-pointer"
+                    >
+                      Forgot passphrase? Erase local vault &amp; start fresh
+                    </button>
+                  </div>
+                ` : `
+                  <div class="p-3 rounded-xl bg-rose-950/60 border border-rose-800/80 space-y-2">
+                    <p class="text-xs text-rose-200 font-semibold">
+                      ⚠️ Permanently erase encrypted local vault?
+                    </p>
+                    <p class="text-[11px] text-rose-200/80 leading-relaxed">
+                      Because there is no server, a forgotten passphrase cannot be recovered. Erasing clears browser storage so you can start a blank plan or import a saved backup file.
+                    </p>
+                    <div class="flex items-center justify-end gap-2 pt-1">
+                      <button type="button" onclick="toggleVaultResetConfirm(false)" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer">
+                        Cancel
+                      </button>
+                      <button type="button" onclick="wipeLockedVault()" class="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold cursor-pointer">
+                        Yes, Erase Vault
+                      </button>
+                    </div>
+                  </div>
+                `}
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+    }
+
+    // --- Modal: Passphrase Lock / Vault Settings ---
+    function renderVaultModal() {
+      if (!isVaultModalOpen) return '';
+      const isManage = vaultEnabled && vaultModalMode === 'manage';
+      const isChange = vaultEnabled && vaultModalMode === 'change';
+
+      return `
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/65 backdrop-blur-xs no-print">
+          <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-[#0F172A] text-white p-5 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-lg">
+                  ${vaultEnabled ? '🛡️' : '🔒'}
+                </div>
+                <div>
+                  <h3 class="text-base font-bold text-white">
+                    ${isManage ? 'Passphrase Lock & Travel Security' : isChange ? 'Change Vault Passphrase' : 'Enable Passphrase Lock (AES-256-GCM)'}
+                  </h3>
+                  <p class="text-xs text-slate-300">100% offline encryption — ideal for international travel &amp; shared laptops</p>
+                </div>
+              </div>
+              <button type="button" onclick="closeVaultModal()" class="text-slate-400 hover:text-white p-1 text-lg leading-none cursor-pointer">✕</button>
+            </div>
+
+            <div class="p-6 overflow-y-auto space-y-4">
+              ${isManage ? `
+                <div class="p-4 rounded-xl bg-emerald-50 border border-emerald-200 space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-emerald-900">🔒 AES-256-GCM Vault is ACTIVE</span>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-200 text-emerald-900">PBKDF2 600k</span>
+                  </div>
+                  <p class="text-xs text-emerald-800 leading-relaxed">
+                    Your estate plan is encrypted at rest in Chrome's local storage. Plaintext storage has been wiped. Closing this tab automatically locks the vault.
+                  </p>
+                </div>
+
+                <div>
+                  <label for="vault-autolock-manage-select" class="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                    Idle Auto-Lock Timer
+                  </label>
+                  <select
+                    id="vault-autolock-manage-select"
+                    onchange="updateVaultAutoLockSetting(this.value)"
+                    class="w-full px-3 py-2.5 rounded-lg border border-slate-300 text-sm text-slate-900 bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                  >
+                    <option value="5" ${vaultAutoLockMinutes === 5 ? 'selected' : ''}>5 minutes of inactivity (strict travel mode)</option>
+                    <option value="15" ${vaultAutoLockMinutes === 15 ? 'selected' : ''}>15 minutes of inactivity (Recommended)</option>
+                    <option value="30" ${vaultAutoLockMinutes === 30 ? 'selected' : ''}>30 minutes of inactivity</option>
+                    <option value="0" ${vaultAutoLockMinutes === 0 ? 'selected' : ''}>Off (only lock manually or when tab closes)</option>
+                  </select>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <button
+                    type="button"
+                    onclick="lockVault()"
+                    class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs cursor-pointer"
+                  >
+                    🔒 Lock Vault Now
+                  </button>
+                  <button
+                    type="button"
+                    onclick="setVaultModalMode('change')"
+                    class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold cursor-pointer"
+                  >
+                    🔑 Change Passphrase
+                  </button>
+                </div>
+
+                <div class="pt-3 border-t border-slate-200 flex items-center justify-between gap-3">
+                  <p class="text-[11px] text-slate-500 leading-snug">
+                    Want to remove the passphrase lock and return to standard unencrypted localStorage?
+                  </p>
+                  <button
+                    type="button"
+                    onclick="disableVaultPassphrase()"
+                    class="shrink-0 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold cursor-pointer"
+                  >
+                    Turn Off Lock
+                  </button>
+                </div>
+              ` : `
+                <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-950 space-y-1">
+                  <div class="font-bold">⚠️ Save your passphrase in a password manager (no "Forgot Password" reset)</div>
+                  <p class="text-[11px] text-amber-900 leading-relaxed">
+                    Because this app stays 100% offline with zero servers, nobody can reset a lost passphrase. A memorable 3–4 word passphrase (e.g. <code class="font-mono bg-amber-100 px-1 rounded">hudson-maple-bridge-62</code>) is both strong and easy to type.
+                  </p>
+                </div>
+
+                <form onsubmit="submitEnableOrChangeVault(event)" class="space-y-3.5">
+                  <div>
+                    <label for="vault-new-passphrase" class="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1">
+                      ${isChange ? 'New Passphrase' : 'Create Passphrase'} (min 8 characters)
+                    </label>
+                    <input
+                      id="vault-new-passphrase"
+                      type="password"
+                      autocomplete="new-password"
+                      placeholder="Enter a strong passphrase..."
+                      ${vaultModalBusy ? 'disabled' : ''}
+                      class="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label for="vault-confirm-passphrase" class="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1">
+                      Confirm Passphrase
+                    </label>
+                    <input
+                      id="vault-confirm-passphrase"
+                      type="password"
+                      autocomplete="new-password"
+                      placeholder="Re-enter passphrase..."
+                      ${vaultModalBusy ? 'disabled' : ''}
+                      class="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label for="vault-autolock-select" class="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1">
+                      Auto-Lock After Inactivity
+                    </label>
+                    <select
+                      id="vault-autolock-select"
+                      class="w-full px-3 py-2.5 rounded-lg border border-slate-300 text-sm text-slate-900 bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                    >
+                      <option value="5" ${vaultAutoLockMinutes === 5 ? 'selected' : ''}>5 minutes (strict travel mode)</option>
+                      <option value="15" ${vaultAutoLockMinutes === 15 ? 'selected' : ''}>15 minutes (Recommended)</option>
+                      <option value="30" ${vaultAutoLockMinutes === 30 ? 'selected' : ''}>30 minutes</option>
+                      <option value="0" ${vaultAutoLockMinutes === 0 ? 'selected' : ''}>Off (lock manually or on tab close)</option>
+                    </select>
+                  </div>
+
+                  ${vaultModalError ? `
+                    <div class="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-800 font-medium">
+                      ⚠️ ${escapeHtml(vaultModalError)}
+                    </div>
+                  ` : ''}
+
+                  <div class="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onclick="${isChange ? "setVaultModalMode('manage')" : 'closeVaultModal()'}"
+                      class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      ${vaultModalBusy ? 'disabled' : ''}
+                      class="px-5 py-2 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 shadow-sm cursor-pointer"
+                    >
+                      ${vaultModalBusy ? 'Encrypting...' : isChange ? '🔑 Update Passphrase' : '🔒 Enable AES-256 Passphrase Lock'}
+                    </button>
+                  </div>
+                </form>
+              `}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // --- Modal: Decrypt Imported Encrypted Backup File ---
+    function renderDecryptImportModal() {
+      if (!pendingEncryptedImport) return '';
+      return `
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/65 backdrop-blur-xs no-print">
+          <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden">
+            <div class="bg-[#0F172A] text-white p-5 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-lg">
+                  🔐
+                </div>
+                <div>
+                  <h3 class="text-base font-bold text-white">Decrypt Backup File</h3>
+                  <p class="text-xs text-slate-300 truncate max-w-[260px]">${escapeHtml(pendingEncryptedImport.fileName)}</p>
+                </div>
+              </div>
+              <button type="button" onclick="closeDecryptImportModal()" class="text-slate-400 hover:text-white p-1 text-lg leading-none cursor-pointer">✕</button>
+            </div>
+            <form onsubmit="submitDecryptImport(event)" class="p-6 space-y-4">
+              <p class="text-xs text-slate-600 leading-relaxed">
+                This backup file is protected with <strong>AES-256-GCM</strong> encryption. Enter the passphrase used when it was exported to restore your plan.
+              </p>
+              <div>
+                <label for="decrypt-import-passphrase" class="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+                  Backup Passphrase
+                </label>
+                <input
+                  id="decrypt-import-passphrase"
+                  type="password"
+                  placeholder="Enter backup passphrase..."
+                  ${decryptImportBusy ? 'disabled' : ''}
+                  class="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+              ${decryptImportError ? `
+                <div class="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-800 font-medium">
+                  ⚠️ ${escapeHtml(decryptImportError)}
+                </div>
+              ` : ''}
+              <div class="flex items-center justify-end gap-2 pt-1">
+                <button type="button" onclick="closeDecryptImportModal()" class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 cursor-pointer">
+                  Cancel
+                </button>
+                <button type="submit" ${decryptImportBusy ? 'disabled' : ''} class="px-5 py-2 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 cursor-pointer">
+                  ${decryptImportBusy ? 'Decrypting...' : '🔓 Decrypt & Import'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+    }
+
     function render() {
       // Preserve active input focus & cursor position so typing never loses focus
       const prevEl = document.activeElement;
       const prevId = prevEl && prevEl.id ? prevEl.id : null;
       const prevSelStart = prevEl && typeof prevEl.selectionStart === 'number' ? prevEl.selectionStart : null;
       const prevSelEnd = prevEl && typeof prevEl.selectionEnd === 'number' ? prevEl.selectionEnd : null;
+
+      const appEl = document.getElementById('app');
+
+      // Security Gate: when Vault is locked, render ONLY the Lock Screen (no header, tabs, or print DOM)
+      if (isVaultLocked) {
+        appEl.innerHTML = renderVaultLockScreen();
+        if (prevId) {
+          const nextEl = document.getElementById(prevId);
+          if (nextEl) {
+            nextEl.focus();
+            if (prevSelStart !== null && typeof nextEl.setSelectionRange === 'function') {
+              try { nextEl.setSelectionRange(prevSelStart, prevSelEnd); } catch (e) {}
+            }
+          }
+        }
+        return;
+      }
 
       const unprotectedCount = state.accounts.filter(
         a =>
@@ -4393,12 +5402,13 @@
       else if (activeTab === 'attorney-prep') tabContent = renderAttorneyPrepTab();
       else if (activeTab === 'help-guide') tabContent = renderHelpGuideTab();
 
-      const appEl = document.getElementById('app');
       appEl.innerHTML = `
         ${renderHeader(unprotectedCount, probateExceedsLimit)}
         ${renderPlanManagerModal()}
         ${renderNewPlanModal()}
         ${renderSaveAsModal()}
+        ${renderVaultModal()}
+        ${renderDecryptImportModal()}
         ${toastMessage ? `
           <div class="fixed bottom-14 right-4 z-50 px-4 py-2.5 rounded-lg bg-[#0F172A] text-white text-xs font-semibold shadow-lg border border-emerald-500/40 no-print">
             ✓ ${escapeHtml(toastMessage)}
@@ -4438,6 +5448,12 @@
     }
 
     render();
+    if (isVaultLocked) {
+      setTimeout(() => {
+        const el = document.getElementById('vault-unlock-input');
+        if (el) el.focus();
+      }, 50);
+    }
   </script>
 </body>
 </html>
